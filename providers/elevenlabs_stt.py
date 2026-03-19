@@ -56,6 +56,8 @@ class PersistentSttSession:
         self._feed_task: asyncio.Task[None] | None = None
         self._on_direct_dispatch: Any | None = None
         self._on_direct_transcribed: Any | None = None
+        self._inbound_queue: asyncio.Queue[bytes | None] | None = None
+        self._speaking_since: float = 0.0
 
     @property
     def _listening(self) -> bool:
@@ -69,10 +71,22 @@ class PersistentSttSession:
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open Scribe connection and begin feeding audio."""
+        self._loop = asyncio.get_running_loop()
+        self._inbound_queue = inbound_queue
+        await self._connect()
+        self._feed_task = asyncio.create_task(
+            self._feed_audio(inbound_queue), name="stt_feed"
+        )
+        logger.info("PersistentSttSession started")
+
+    async def _connect(self) -> None:
+        """Open (or re-open) the Scribe WebSocket."""
         from elevenlabs import ElevenLabs
         from elevenlabs.realtime.scribe import AudioFormat, CommitStrategy
 
-        self._loop = asyncio.get_running_loop()
+        if self._stt is not None:
+            with contextlib.suppress(Exception):
+                await self._stt.close()
 
         client = ElevenLabs(api_key=self._api_key)
         options = {
@@ -96,11 +110,7 @@ class PersistentSttSession:
             "transcriber_error", "chunk_size_exceeded",
         ):
             self._stt.on(ev, self._on_error)
-
-        self._feed_task = asyncio.create_task(
-            self._feed_audio(inbound_queue), name="stt_feed"
-        )
-        logger.info("PersistentSttSession started")
+        logger.info("Scribe WebSocket connected")
 
     async def stop(self) -> None:
         """Cancel feed task and close Scribe connection."""
@@ -111,13 +121,28 @@ class PersistentSttSession:
                 await self._stt.close()
         logger.info("PersistentSttSession stopped")
 
+    # Reconnect Scribe if speaking lasted longer than this (seconds)
+    _RECONNECT_AFTER_SPEAKING_S = 10.0
+
     def set_speaking(self, speaking: bool) -> None:
-        """Toggle speaking mode."""
+        """Toggle speaking mode. Reconnects Scribe after long TTS periods."""
         logger.info("set_speaking: %s → %s", self._speaking, speaking)
+        was_speaking = self._speaking
         self._speaking = speaking
+        if speaking:
+            self._speaking_since = time.monotonic()
         if not speaking:
             self._barge_in_event = None
             self._discard_until = time.monotonic() + ECHO_DISCARD_WINDOW_S
+            # Reconnect if TTS ran for a long time — Scribe degrades
+            if was_speaking and self._loop:
+                spoke_for = time.monotonic() - self._speaking_since
+                if spoke_for > self._RECONNECT_AFTER_SPEAKING_S:
+                    logger.info(
+                        "Scribe reconnect: TTS lasted %.1fs (threshold %.1fs)",
+                        spoke_for, self._RECONNECT_AFTER_SPEAKING_S,
+                    )
+                    asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
 
     def arm_barge_in(self) -> asyncio.Event:
         """Return asyncio.Event that fires on first meaningful partial transcript."""
@@ -156,7 +181,7 @@ class PersistentSttSession:
             logger.info("_feed_audio: cancelled after %d frames", frame_count)
 
     def _on_partial(self, data: dict) -> None:
-        text = data.get("transcript", "") or data.get("text", "")
+        text = data.get("text", "")
         if text.strip():
             logger.info("STT partial: speaking=%s len=%d text=%r", self._speaking, len(text), text[:60])
         if not self._speaking or len(text) <= BARGE_IN_MIN_TEXT_LEN:
@@ -166,7 +191,7 @@ class PersistentSttSession:
             self._loop.call_soon_threadsafe(self._barge_in_event.set)
 
     def _on_committed(self, data: dict) -> None:
-        text = data.get("transcript", "") or data.get("text", "")
+        text = data.get("text", "")
         in_echo = time.monotonic() < self._discard_until
         logger.info(
             "STT committed: speaking=%s listening=%s echo_discard=%s text=%r",
