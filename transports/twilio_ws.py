@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 if TYPE_CHECKING:
-    from projects.voice_runtime.session import VoiceSession
+    from voice_runtime.session import VoiceSession
 
 logger = logging.getLogger(__name__)
 

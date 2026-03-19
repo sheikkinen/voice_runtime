@@ -14,7 +14,7 @@ def create_transport(provider: str = "twilio", **kwargs):
         The transport module (use register_voice_websocket from it).
     """
     if provider == "twilio":
-        from projects.voice_runtime.transports import twilio_ws
+        from voice_runtime.transports import twilio_ws
 
         return twilio_ws
     raise ValueError(f"Unknown transport: {provider}")

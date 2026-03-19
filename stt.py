@@ -14,13 +14,13 @@ def create_stt(provider: str = "elevenlabs", mode: str = "persistent", **kwargs)
     """
     if provider == "elevenlabs":
         if mode == "persistent":
-            from projects.voice_runtime.providers.elevenlabs_stt import (
+            from voice_runtime.providers.elevenlabs_stt import (
                 PersistentSttSession,
             )
 
             return PersistentSttSession(**kwargs)
         elif mode == "per_turn":
-            from projects.voice_runtime.providers.elevenlabs_stt import PerTurnStt
+            from voice_runtime.providers.elevenlabs_stt import PerTurnStt
 
             return PerTurnStt(**kwargs)
         raise ValueError(f"Unknown STT mode: {mode}")

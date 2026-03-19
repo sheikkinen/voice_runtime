@@ -43,7 +43,7 @@ def _make_session():
 
 class TestTwilioTransportRegistration:
     def test_register_creates_websocket_route(self):
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()
@@ -57,7 +57,7 @@ class TestTwilioTransportProtocol:
     """Test the Twilio Media Streams protocol handling."""
 
     def test_connected_event_logged(self):
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()
@@ -71,7 +71,7 @@ class TestTwilioTransportProtocol:
         session.signal_disconnected.assert_called()
 
     def test_start_event_signals_ws_connected(self):
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()
@@ -90,7 +90,7 @@ class TestTwilioTransportProtocol:
         assert session.call_sid == "call_123"
 
     def test_media_event_puts_decoded_audio_to_inbound(self):
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()
@@ -110,7 +110,7 @@ class TestTwilioTransportProtocol:
         session.put_inbound.assert_called_once_with(audio_data)
 
     def test_mark_event_signals_mark_received(self):
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()
@@ -127,7 +127,7 @@ class TestTwilioTransportProtocol:
         session.signal_mark_received.assert_called_once_with("tts_complete")
 
     def test_stop_event_signals_disconnected(self):
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()
@@ -141,7 +141,7 @@ class TestTwilioTransportProtocol:
 
     def test_media_event_taps_caller(self):
         """Audio monitoring: media frames are tapped to session.tap_caller."""
-        from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
         session = _make_session()

@@ -16,7 +16,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from projects.voice_runtime.session import VoiceSession
+    from voice_runtime.session import VoiceSession
 
 logger = logging.getLogger(__name__)
 

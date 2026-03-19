@@ -23,7 +23,7 @@ import pytest
 
 class TestVoiceSessionDefaults:
     def test_creates_with_defaults(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         assert s.call_sid is None
@@ -32,7 +32,7 @@ class TestVoiceSessionDefaults:
         assert s.is_disconnected is False
 
     def test_queues_are_asyncio_queues(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         assert isinstance(s.inbound, asyncio.Queue)
@@ -46,25 +46,25 @@ class TestVoiceSessionDefaults:
 
 class TestQueueAPI:
     def test_put_outbound_sync_no_loop_is_noop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.put_outbound_sync(b"\x01")  # must not raise
 
     def test_put_inbound_no_loop_is_noop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.put_inbound(b"\x02")  # must not raise
 
     def test_put_inbound_none_no_loop_is_noop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.put_inbound(None)  # must not raise
 
     def test_put_and_get_outbound_with_loop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -82,7 +82,7 @@ class TestQueueAPI:
             t.join(timeout=2)
 
     def test_put_and_get_inbound_with_loop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -100,7 +100,7 @@ class TestQueueAPI:
             t.join(timeout=2)
 
     def test_clear_inbound_drains_queue(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -120,7 +120,7 @@ class TestQueueAPI:
             t.join(timeout=2)
 
     def test_clear_inbound_no_loop_is_noop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.clear_inbound()  # must not raise
@@ -133,14 +133,14 @@ class TestQueueAPI:
 
 class TestMarkSync:
     def test_send_mark_and_wait_no_loop_is_noop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.send_mark_and_wait("test_mark")  # must not raise (no loop → silent return)
 
     def test_mark_roundtrip(self):
         """send_mark_and_wait blocks until signal_mark_received is called."""
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -170,7 +170,7 @@ class TestMarkSync:
             t.join(timeout=2)
 
     def test_mark_timeout_raises(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -185,7 +185,7 @@ class TestMarkSync:
             t.join(timeout=2)
 
     def test_mark_timeout_suppressed_when_disconnected(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -201,7 +201,7 @@ class TestMarkSync:
             t.join(timeout=2)
 
     def test_signal_mark_received_unknown_logs_warning(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.signal_mark_received("unknown_mark")  # must not raise
@@ -214,7 +214,7 @@ class TestMarkSync:
 
 class TestLifecycle:
     def test_signal_disconnected_sets_flag(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         assert not s.is_disconnected
@@ -222,7 +222,7 @@ class TestLifecycle:
         assert s.is_disconnected
 
     def test_signal_disconnected_idempotent(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.signal_disconnected()
@@ -230,7 +230,7 @@ class TestLifecycle:
         assert s.is_disconnected
 
     def test_signal_disconnected_unblocks_pending_marks(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -255,14 +255,14 @@ class TestLifecycle:
             t.join(timeout=2)
 
     def test_signal_ws_connected(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.signal_ws_connected("stream_123")
         assert s.stream_sid == "stream_123"
 
     def test_wait_for_ws_connect_success(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
 
@@ -277,14 +277,14 @@ class TestLifecycle:
         t.join()
 
     def test_wait_for_ws_connect_timeout(self):
-        from projects.voice_runtime.session import CallNotAnsweredError, VoiceSession
+        from voice_runtime.session import CallNotAnsweredError, VoiceSession
 
         s = VoiceSession()
         with pytest.raises(CallNotAnsweredError):
             s.wait_for_ws_connect(timeout=0.1)
 
     def test_set_loop(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = asyncio.new_event_loop()
@@ -300,7 +300,7 @@ class TestLifecycle:
 
 class TestReset:
     def test_reset_clears_disconnected(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.signal_disconnected()
@@ -309,7 +309,7 @@ class TestReset:
         assert not s.is_disconnected
 
     def test_reset_clears_stream_sid(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.signal_ws_connected("old_stream")
@@ -317,7 +317,7 @@ class TestReset:
         assert s.stream_sid is None
 
     def test_reset_clears_pending_marks(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s._pending_marks["stale"] = threading.Event()
@@ -325,7 +325,7 @@ class TestReset:
         assert len(s._pending_marks) == 0
 
     def test_reset_drains_queues(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.inbound.put_nowait(b"\x00")
@@ -335,7 +335,7 @@ class TestReset:
         assert s.outbound.empty()
 
     def test_reset_clears_ws_connected_event(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.signal_ws_connected("old")
@@ -356,7 +356,7 @@ class TestReset:
         """
         from unittest.mock import MagicMock
 
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         # Without event loop — feed_task should be cancelled directly
         s = VoiceSession()
@@ -371,7 +371,7 @@ class TestReset:
         """When event loop is available, reset() schedules stt.stop() async."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         loop = MagicMock()
@@ -381,7 +381,7 @@ class TestReset:
         mock_stt.stop = AsyncMock()
         s.stt = mock_stt
 
-        with patch("projects.voice_runtime.session.asyncio.run_coroutine_threadsafe") as mock_rcts:
+        with patch("voice_runtime.session.asyncio.run_coroutine_threadsafe") as mock_rcts:
             s.reset()
             mock_rcts.assert_called_once()
             # Verify the loop argument is correct
@@ -399,19 +399,19 @@ class TestReset:
 
 class TestMonitoring:
     def test_tap_caller_noop_without_mixer(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.tap_caller(b"\x00" * 160)  # must not raise
 
     def test_tap_agent_noop_without_mixer(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         s.tap_agent(b"\x00" * 160)  # must not raise
 
     def test_set_mixer_enables_taps(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         mock_mixer = MagicMock()
@@ -422,7 +422,7 @@ class TestMonitoring:
         mock_mixer.write_agent.assert_called_once_with(b"\xcd" * 160)
 
     def test_set_mixer_none_disables_taps(self):
-        from projects.voice_runtime.session import VoiceSession
+        from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
         mock_mixer = MagicMock()
@@ -439,19 +439,19 @@ class TestMonitoring:
 
 class TestExceptions:
     def test_missing_stream_url_error(self):
-        from projects.voice_runtime.session import MissingStreamUrlError
+        from voice_runtime.session import MissingStreamUrlError
 
         err = MissingStreamUrlError()
         assert "VOICE_STREAM_URL" in str(err)
 
     def test_call_not_answered_error(self):
-        from projects.voice_runtime.session import CallNotAnsweredError
+        from voice_runtime.session import CallNotAnsweredError
 
         err = CallNotAnsweredError(30.0)
         assert "30" in str(err)
 
     def test_call_hangup_error(self):
-        from projects.voice_runtime.session import CallHangupError
+        from voice_runtime.session import CallHangupError
 
         err = CallHangupError()
         assert "hung up" in str(err)

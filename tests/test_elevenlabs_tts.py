@@ -28,7 +28,7 @@ def _make_session(disconnected: bool = False):
 
 class TestElevenLabsTTSSpeak:
     def test_empty_text_returns_empty(self):
-        from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+        from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
 
         tts = ElevenLabsTTS()
         session = _make_session()
@@ -36,7 +36,7 @@ class TestElevenLabsTTSSpeak:
         assert result["last_spoken"] == ""
 
     def test_disconnected_session_returns_early(self):
-        from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+        from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
 
         tts = ElevenLabsTTS()
         session = _make_session(disconnected=True)
@@ -45,7 +45,7 @@ class TestElevenLabsTTSSpeak:
         assert result["last_spoken"] == ""
 
     def test_speak_calls_elevenlabs_and_ffmpeg(self):
-        from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+        from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
 
         tts = ElevenLabsTTS()
         session = _make_session()
@@ -71,7 +71,7 @@ class TestElevenLabsTTSSpeak:
         session.send_mark_and_wait.assert_called_once_with("tts_complete", timeout=30.0)
 
     def test_barge_in_interrupts_playback(self):
-        from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+        from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
 
         tts = ElevenLabsTTS()
         session = _make_session()
@@ -96,7 +96,7 @@ class TestElevenLabsTTSSpeak:
         mock_proc.terminate.assert_called()
 
     def test_speak_accepts_voice_id_override(self):
-        from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+        from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
 
         tts = ElevenLabsTTS(voice_id="custom_voice")
         session = _make_session()
@@ -119,7 +119,7 @@ class TestElevenLabsTTSSpeak:
 
     def test_mark_timeout_does_not_raise(self):
         """Mark timeout logs warning but doesn't raise."""
-        from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+        from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
 
         tts = ElevenLabsTTS()
         session = _make_session()
