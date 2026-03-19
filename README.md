@@ -306,3 +306,26 @@ class TelcoSession(VoiceSession):
 ```
 
 Tool nodes then use the session for audio I/O, mark sync, and transport intents — without knowing anything about Twilio, WebSockets, or ElevenLabs.
+
+### Known Consumers
+
+- **[ninchat_voice](../ninchat_voice/)** — FSM-based Ninchat chatbot voice coordinator. Uses `TelcoSession` in `services/telephony.py` as a consumer wrapper. Multi-call session reuse with per-call reset.
+- **[outcaller](../outcaller/)** — YAMLGraph-orchestrated outbound/inbound voice caller. Uses `TelcoSession` in `nodes/coordinator.py`.
+
+## Multi-Call Session Reuse
+
+When servers handle multiple sequential calls on the same `VoiceSession` instance, `reset()` clears all state between calls:
+
+- Stops active STT via `asyncio.run_coroutine_threadsafe(stt.stop(), loop)` before clearing the reference (prevents orphaned WebSocket connections)
+- Drains inbound and outbound queues
+- Resets mark synchronization and transport intent events
+
+The STT `start()` method also drains the inbound queue as defense-in-depth against sentinel values from prior call cleanup.
+
+### STT Reconnect on Fatal Errors
+
+`PersistentSttSession` detects fatal WebSocket errors (connection closed, protocol errors) and automatically reconnects:
+
+- `_on_error()` schedules `_reconnect_after_error()` for errors in `_FATAL_ERRORS`
+- Reconnect drains stale frames, creates a new WebSocket, and resumes the feed task
+- `_feed_audio()` wraps `send()` in try/except for dead socket resilience
