@@ -74,8 +74,34 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                     logger.error("Error sending mark: %s", e)
                     break
 
+        async def watch_disconnect() -> None:
+            """NC-154: Watch for session.request_disconnect() and close WebSocket."""
+            if session._disconnect_requested is None:
+                return
+            await session._disconnect_requested.wait()
+            logger.info("Disconnect requested — closing WebSocket to end call")
+            with contextlib.suppress(Exception):
+                await websocket.close(1000)
+
+        async def send_clears() -> None:
+            """NC-154: Watch for session.request_clear_buffer() and send Twilio clear."""
+            if session._clear_queue is None:
+                return
+            while True:
+                try:
+                    sid = await session._clear_queue.get()
+                    await websocket.send_json({"event": "clear", "streamSid": sid})
+                except asyncio.CancelledError:
+                    break
+                except Exception as exc:
+                    logger.error("Error sending clear: %s", exc)
+                    break
+
         send_task: asyncio.Task | None = None
         mark_task: asyncio.Task | None = None
+        disconnect_task: asyncio.Task | None = None  # NC-154
+        clear_task: asyncio.Task | None = None       # NC-154
+        stt_task: asyncio.Task | None = None         # NC-154
 
         try:
             while True:
@@ -99,6 +125,16 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
 
                     send_task = asyncio.create_task(send_audio())
                     mark_task = asyncio.create_task(send_marks())
+                    disconnect_task = asyncio.create_task(watch_disconnect())
+                    clear_task = asyncio.create_task(send_clears())
+
+                    # NC-154: STT lifecycle — create via factory if provided
+                    if session.stt_factory is not None and session.stt is None:
+                        session.stt = session.stt_factory()
+                    if session.stt is not None:
+                        stt_task = asyncio.create_task(
+                            session.stt.start(session.inbound), name="stt_start"
+                        )
 
                 elif event == "media":
                     payload = data.get("media", {}).get("payload", "")
@@ -127,6 +163,22 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                 logger.error("WebSocket error: %s", e)
             session.signal_disconnected()
         finally:
+            # NC-154: stop STT gracefully before cancelling tasks
+            if session.stt is not None:
+                with contextlib.suppress(Exception):
+                    await session.stt.stop()
+            if stt_task is not None:
+                stt_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await stt_task
+            if clear_task is not None:
+                clear_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await clear_task
+            if disconnect_task is not None:
+                disconnect_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await disconnect_task
             if send_task is not None:
                 send_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):

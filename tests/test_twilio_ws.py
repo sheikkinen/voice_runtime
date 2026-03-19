@@ -33,6 +33,11 @@ def _make_session():
     session.get_outbound = AsyncMock(side_effect=asyncio.CancelledError)
     session.get_pending_mark = AsyncMock(side_effect=asyncio.CancelledError)
     session.tap_caller = MagicMock()
+    # NC-154: intent API fields — None means "not configured"
+    session._disconnect_requested = None
+    session._clear_queue = None
+    session.stt_factory = None
+    session.stt = None
     return session
 
 

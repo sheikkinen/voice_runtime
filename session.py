@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from asyncio import Queue
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,12 @@ class VoiceSession:
 
     # --- Optional audio monitoring ---
     _mixer: Any = field(default=None, repr=False)
+
+    # --- Transport intent (NC-154) ---
+    _disconnect_requested: asyncio.Event | None = field(default=None, repr=False)
+    _clear_queue: asyncio.Queue[str] | None = field(default=None, repr=False)
+    stt: Any = field(default=None, repr=False)
+    stt_factory: Callable[[], Any] | None = field(default=None, repr=False)
 
     # --- Loop / lifecycle ---
 
@@ -188,6 +195,11 @@ class VoiceSession:
 
             with contextlib.suppress(RuntimeError):
                 self._loop = asyncio.get_running_loop()
+        # NC-154: lazy-init transport intent fields in the event loop context
+        if self._disconnect_requested is None:
+            self._disconnect_requested = asyncio.Event()
+        if self._clear_queue is None:
+            self._clear_queue = asyncio.Queue()
         self._ws_connected.set()
         logger.info("WebSocket connected: stream_sid=%s", stream_sid)
 
@@ -215,6 +227,10 @@ class VoiceSession:
         self._ws_connected.clear()
         self.stream_sid = None
         self._pending_marks.clear()
+        # NC-154: reset transport intent fields
+        self._disconnect_requested = None
+        self._clear_queue = None
+        self.stt = None
         # Drain stale audio queues
         while True:
             try:
@@ -243,3 +259,31 @@ class VoiceSession:
         """Tee agent audio to mixer (no-op if no mixer)."""
         if self._mixer:
             self._mixer.write_agent(chunk)
+
+    # --- Transport intent (NC-154) ---
+
+    def request_disconnect(self) -> None:
+        """Consumer requests call termination. Thread-safe.
+
+        Transport watches _disconnect_requested and closes in its own way
+        (Twilio: websocket.close, SIP: BYE, etc.).
+        """
+        if self._loop is None or self._disconnect_requested is None:
+            logger.debug("request_disconnect: prerequisites not met — skipping")
+            return
+        self._loop.call_soon_threadsafe(self._disconnect_requested.set)
+        logger.info("Disconnect requested — transport will terminate call")
+
+    def request_clear_buffer(self) -> None:
+        """Consumer requests outbound buffer discard. Thread-safe.
+
+        Transport watches _clear_queue and sends protocol-specific clear
+        command (Twilio: 'clear' event, SIP: flush, etc.).
+        """
+        if self._loop is None or self._clear_queue is None or self.stream_sid is None:
+            logger.debug("request_clear_buffer: prerequisites not met — skipping")
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._clear_queue.put(self.stream_sid), self._loop
+        )
+        logger.debug("Buffer clear requested for stream_sid=%s", self.stream_sid)
