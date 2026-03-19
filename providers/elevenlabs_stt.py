@@ -156,7 +156,7 @@ class PersistentSttSession:
             logger.info("_feed_audio: cancelled after %d frames", frame_count)
 
     def _on_partial(self, data: dict) -> None:
-        text = data.get("text", "")
+        text = data.get("transcript", "") or data.get("text", "")
         if text.strip():
             logger.info("STT partial: speaking=%s len=%d text=%r", self._speaking, len(text), text[:60])
         if not self._speaking or len(text) <= BARGE_IN_MIN_TEXT_LEN:
@@ -166,7 +166,7 @@ class PersistentSttSession:
             self._loop.call_soon_threadsafe(self._barge_in_event.set)
 
     def _on_committed(self, data: dict) -> None:
-        text = data.get("text", "")
+        text = data.get("transcript", "") or data.get("text", "")
         in_echo = time.monotonic() < self._discard_until
         logger.info(
             "STT committed: speaking=%s listening=%s echo_discard=%s text=%r",
