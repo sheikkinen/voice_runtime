@@ -230,6 +230,15 @@ class VoiceSession:
         # NC-154: reset transport intent fields
         self._disconnect_requested = None
         self._clear_queue = None
+        # Stop STT before clearing reference — prevents orphaned feed tasks.
+        # stop() is async, so schedule it on the event loop if available.
+        if self.stt is not None:
+            if self._loop is not None and self._loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.stt.stop(), self._loop)
+            else:
+                # Best-effort sync stop (cancel feed task at minimum)
+                if hasattr(self.stt, '_feed_task') and self.stt._feed_task:
+                    self.stt._feed_task.cancel()
         self.stt = None
         # Drain stale audio queues
         while True:

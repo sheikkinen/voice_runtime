@@ -73,6 +73,13 @@ class PersistentSttSession:
         """Open Scribe connection and begin feeding audio."""
         self._loop = asyncio.get_running_loop()
         self._inbound_queue = inbound_queue
+        # Drain any stale sentinels/frames left from a previous call's cleanup
+        # racing with session reset (e.g., abort_listen arriving after drain).
+        while not inbound_queue.empty():
+            try:
+                inbound_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
         await self._connect()
         self._feed_task = asyncio.create_task(
             self._feed_audio(inbound_queue), name="stt_feed"
@@ -159,6 +166,32 @@ class PersistentSttSession:
         finally:
             self._listening = False
 
+    async def _reconnect_after_error(self) -> None:
+        """Reconnect Scribe after a fatal error (e.g. queue_overflow).
+
+        Drains stale frames from the inbound queue before reconnecting
+        to avoid a cascade overflow from buffered audio.
+        """
+        # Drain stale frames that accumulated during the dead socket period
+        if self._inbound_queue:
+            drained = 0
+            while not self._inbound_queue.empty():
+                item = self._inbound_queue.get_nowait()
+                if item is None:
+                    # Re-enqueue sentinel — it must not be lost
+                    self._inbound_queue.put_nowait(None)
+                    break
+                drained += 1
+            if drained:
+                logger.info("Drained %d stale frames before reconnect", drained)
+
+        try:
+            logger.info("Reconnecting Scribe after fatal error...")
+            await self._connect()
+            logger.info("Scribe reconnected successfully after error")
+        except Exception as exc:
+            logger.error("Scribe reconnect failed: %s", exc)
+
     async def _feed_audio(self, inbound: asyncio.Queue[bytes | None]) -> None:
         """Feed inbound audio to Scribe WebSocket."""
         frame_count = 0
@@ -176,7 +209,12 @@ class PersistentSttSession:
                 if frame_count % 100 == 0:
                     logger.info("_feed_audio: %d frames fed (speaking=%s)", frame_count, self._speaking)
                 audio_b64 = base64.b64encode(frame).decode("ascii")
-                await self._stt.send({"audio_base_64": audio_b64})
+                try:
+                    await self._stt.send({"audio_base_64": audio_b64})
+                except Exception:
+                    # Dead socket after queue_overflow — wait for reconnect
+                    logger.debug("_feed_audio: send failed, waiting for reconnect")
+                    await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             logger.info("_feed_audio: cancelled after %d frames", frame_count)
 
@@ -229,8 +267,18 @@ class PersistentSttSession:
         if self._loop:
             self._loop.call_soon_threadsafe(self._time_limit_event.set)
 
+    # Fatal errors that kill the Scribe session and require reconnect
+    _FATAL_ERRORS = frozenset({"queue_overflow", "resource_exhausted"})
+
     def _on_error(self, data: dict) -> None:
+        msg_type = data.get("message_type", "")
         logger.error("STT error event: %s", data)
+
+        if msg_type in self._FATAL_ERRORS and self._loop and self._inbound_queue:
+            logger.warning(
+                "STT fatal error (%s) — scheduling reconnect", msg_type,
+            )
+            asyncio.run_coroutine_threadsafe(self._reconnect_after_error(), self._loop)
 
 
 class PerTurnStt:

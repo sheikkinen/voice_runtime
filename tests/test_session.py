@@ -343,6 +343,54 @@ class TestReset:
         # Should not be connected after reset
         assert not s._ws_connected.is_set()
 
+    def test_reset_stops_stt_before_clearing(self):
+        """BUG: reset() sets stt=None without stopping STT first.
+
+        This orphans the PersistentSttSession — its feed_task and Scribe
+        WebSocket remain alive, consuming from the inbound queue and
+        potentially interfering with the next call's STT session.
+
+        When no event loop is available, the feed_task should be cancelled.
+        When an event loop is running, stop() is scheduled via
+        run_coroutine_threadsafe (tested implicitly via production path).
+        """
+        from unittest.mock import MagicMock
+
+        from projects.voice_runtime.session import VoiceSession
+
+        # Without event loop — feed_task should be cancelled directly
+        s = VoiceSession()
+        mock_stt = MagicMock()
+        mock_stt._feed_task = MagicMock()
+        s.stt = mock_stt
+        s.reset()
+        mock_stt._feed_task.cancel.assert_called_once()
+        assert s.stt is None
+
+    def test_reset_with_loop_schedules_async_stop(self):
+        """When event loop is available, reset() schedules stt.stop() async."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from projects.voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        loop = MagicMock()
+        loop.is_running.return_value = True
+        s._loop = loop
+        mock_stt = MagicMock()
+        mock_stt.stop = AsyncMock()
+        s.stt = mock_stt
+
+        with patch("projects.voice_runtime.session.asyncio.run_coroutine_threadsafe") as mock_rcts:
+            s.reset()
+            mock_rcts.assert_called_once()
+            # Verify the loop argument is correct
+            _, kwargs = mock_rcts.call_args
+            args = mock_rcts.call_args[0]
+            assert args[1] is loop
+
+        assert s.stt is None
+
 
 # ---------------------------------------------------------------------------
 # Audio monitoring (optional mixer)
