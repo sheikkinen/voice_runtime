@@ -1,16 +1,16 @@
-"""ElevenLabs TTS provider — streaming pipeline.
+"""ElevenLabs TTS provider — native mulaw streaming.
 
 NC-152: Merged from ninchat_voice/services/tts.py and outcaller/nodes/tts.py.
 Takes best of both: ninchat_voice's barge-in interrupt + outcaller's monitoring tap.
 
-Pipeline: ElevenLabs API → ffmpeg subprocess (MP3 → mulaw 8kHz) → session outbound queue.
+NC-159: Native ulaw_8000 output — eliminated ffmpeg subprocess pipeline.
+Pipeline: ElevenLabs API (ulaw_8000) → session outbound queue.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import subprocess
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -29,7 +29,7 @@ ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
 class ElevenLabsTTS:
     """ElevenLabs TTS provider.
 
-    Streams text → ElevenLabs API → ffmpeg (MP3→mulaw) → session outbound queue.
+    Streams text → ElevenLabs API (native ulaw_8000) → session outbound queue.
     Supports barge-in interrupt via stop_event and audio monitoring via session.tap_agent.
     """
 
@@ -49,7 +49,7 @@ class ElevenLabsTTS:
         session: VoiceSession,
         stop_event: threading.Event | None = None,
     ) -> dict[str, Any]:
-        """Stream TTS audio to session outbound queue via ffmpeg.
+        """Stream TTS audio to session outbound queue.
 
         Args:
             text: Text to speak.
@@ -73,50 +73,21 @@ class ElevenLabsTTS:
         t0 = time.time()
         client = ElevenLabs(api_key=self._api_key)
 
-        proc = subprocess.Popen(
-            [
-                "ffmpeg",
-                "-i", "pipe:0",
-                "-f", "mulaw",
-                "-ar", "8000",
-                "-ac", "1",
-                "pipe:1",
-            ],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+        audio_stream = client.text_to_speech.convert(
+            voice_id=self._voice_id,
+            model_id=self._model_id,
+            text=text,
+            output_format="ulaw_8000",
         )
 
-        def _feed_mp3() -> None:
-            audio_stream = client.text_to_speech.convert(
-                voice_id=self._voice_id,
-                model_id=self._model_id,
-                text=text,
-                output_format="mp3_22050_32",
-            )
-            for chunk in audio_stream:
-                if proc.stdin:
-                    proc.stdin.write(chunk)
-            if proc.stdin:
-                proc.stdin.close()
-
-        feed_thread = threading.Thread(target=_feed_mp3, daemon=True)
-        feed_thread.start()
-
-        chunk_size = 160 if stop_event else 640
-        while True:
-            chunk = proc.stdout.read(chunk_size) if proc.stdout else b""
+        for chunk in audio_stream:
             if not chunk:
-                break
+                continue
             if stop_event and stop_event.is_set():
-                logger.info("Barge-in interrupt: terminating ffmpeg")
-                proc.terminate()
+                logger.info("Barge-in interrupt")
                 return {"last_spoken": text, "interrupted": True}
             session.put_outbound_sync(chunk)
             session.tap_agent(chunk)
-
-        feed_thread.join()
-        proc.wait()
 
         logger.info("Spoke: %s (%.2fs)", text[:50], time.time() - t0)
 
