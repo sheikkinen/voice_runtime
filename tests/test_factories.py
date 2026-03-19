@@ -24,6 +24,12 @@ class TestCreateTts:
         tts = create_tts(provider="elevenlabs")
         assert type(tts).__name__ == "ElevenLabsTTS"
 
+    def test_azure_provider(self):
+        from voice_runtime.tts import create_tts
+
+        tts = create_tts(provider="azure", subscription_key="test")
+        assert type(tts).__name__ == "AzureTTS"
+
     def test_unknown_provider_raises(self):
         from voice_runtime.tts import create_tts
 
@@ -49,6 +55,24 @@ class TestCreateStt:
 
         stt = create_stt(provider="elevenlabs", mode="per_turn")
         assert type(stt).__name__ == "PerTurnStt"
+
+    def test_azure_persistent(self):
+        from voice_runtime.stt import create_stt
+
+        stt = create_stt(provider="azure", mode="persistent", subscription_key="test")
+        assert type(stt).__name__ == "AzurePersistentStt"
+
+    def test_azure_per_turn(self):
+        from voice_runtime.stt import create_stt
+
+        stt = create_stt(provider="azure", mode="per_turn", subscription_key="test")
+        assert type(stt).__name__ == "AzurePerTurnStt"
+
+    def test_azure_unknown_mode_raises(self):
+        from voice_runtime.stt import create_stt
+
+        with pytest.raises(ValueError, match="Unknown Azure STT mode"):
+            create_stt(provider="azure", mode="invalid")
 
     def test_unknown_provider_raises(self):
         from voice_runtime.stt import create_stt

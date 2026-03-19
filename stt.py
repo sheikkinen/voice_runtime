@@ -24,4 +24,14 @@ def create_stt(provider: str = "elevenlabs", mode: str = "persistent", **kwargs)
 
             return PerTurnStt(**kwargs)
         raise ValueError(f"Unknown STT mode: {mode}")
+    elif provider == "azure":
+        if mode == "persistent":
+            from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+            return AzurePersistentStt(**kwargs)
+        elif mode == "per_turn":
+            from voice_runtime.providers.azure_stt import AzurePerTurnStt
+
+            return AzurePerTurnStt(**kwargs)
+        raise ValueError(f"Unknown Azure STT mode: {mode}")
     raise ValueError(f"Unknown STT provider: {provider}")
