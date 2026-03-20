@@ -36,6 +36,7 @@ class SttTee:
         self._fanout_task: asyncio.Task[None] | None = None
         self._primary_queue: asyncio.Queue[bytes | None] | None = None
         self._secondary_queue: asyncio.Queue[bytes | None] | None = None
+        self._secondary_drops: int = 0  # NC-170 Fix 1: drop counter
         logger.info(
             "SttTee created: primary=%s, secondary=%s",
             type(primary).__name__,
@@ -92,7 +93,13 @@ class SttTee:
                 try:
                     self._secondary_queue.put_nowait(frame)
                 except Exception:
-                    pass  # secondary queue overflow — don't block primary
+                    # NC-170 Fix 1: count drops, log periodically
+                    self._secondary_drops += 1
+                    if self._secondary_drops % 500 == 1:
+                        logger.warning(
+                            "Secondary STT queue overflow: %d frames dropped",
+                            self._secondary_drops,
+                        )
                 if frame is None:
                     break
         except asyncio.CancelledError:
@@ -112,3 +119,6 @@ class SttTee:
             await self.primary.stop()
         with contextlib.suppress(Exception):
             await self.secondary.stop()
+        if self._secondary_drops:
+            logger.info("SttTee stopped: %d secondary frames dropped total", self._secondary_drops)
+        self._secondary_drops = 0

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 VOICE_SERVER_PORT = int(os.getenv("VOICE_SERVER_PORT", "8080"))
+FRAME_BYTES = 160  # 20ms @ 8kHz mulaw mono
 
 
 class MissingStreamUrlError(Exception):
@@ -102,6 +103,12 @@ class VoiceSession:
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Called by transport when event loop is available."""
         self._loop = loop
+        # NC-170 Fix 3: init transport intent fields early to close
+        # the pre-connection race (moved from signal_ws_connected).
+        if self._disconnect_requested is None:
+            self._disconnect_requested = asyncio.Event()
+        if self._clear_queue is None:
+            self._clear_queue = asyncio.Queue()
 
     @property
     def loop(self) -> asyncio.AbstractEventLoop | None:
@@ -110,10 +117,20 @@ class VoiceSession:
 
     # --- Queue API (thread-safe sync wrappers) ---
 
+    _frame_size_warned: bool = False
+
     def put_inbound(self, data: bytes | None) -> None:
         """Thread-safe enqueue to inbound (called by transport)."""
         if self._loop is None:
             return
+        # NC-170 Fix 4: log non-standard frame sizes (first occurrence only)
+        if data is not None and len(data) != FRAME_BYTES and len(data) > 0:
+            if not self._frame_size_warned:
+                logger.debug(
+                    "put_inbound: non-standard frame size %d (expected %d)",
+                    len(data), FRAME_BYTES,
+                )
+                self._frame_size_warned = True
         asyncio.run_coroutine_threadsafe(self.inbound.put(data), self._loop)
 
     def put_outbound_sync(self, data: bytes) -> None:
@@ -147,7 +164,8 @@ class VoiceSession:
             if cleared > 0:
                 logger.info("Cleared %d stale frames from inbound queue", cleared)
         except Exception:
-            pass  # best-effort
+            # NC-170 Fix 1: log instead of silently swallowing
+            logger.debug("clear_inbound drain failed", exc_info=True)
 
     # --- Mark sync ---
 

@@ -201,6 +201,12 @@ class AudioMixer:
                 if self._proc.stdin:
                     self._proc.stdin.close()
             self._proc.terminate()
-            with contextlib.suppress(Exception):
+            try:
                 self._proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                # NC-170 Fix 5: SIGKILL after terminate timeout
+                logger.warning("AudioMixer: ffplay pid=%d did not terminate, sending SIGKILL", pid)
+                self._proc.kill()
+                with contextlib.suppress(Exception):
+                    self._proc.wait(timeout=1.0)
             logger.info("AudioMixer shutdown (pid=%d)", pid)

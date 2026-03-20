@@ -163,11 +163,16 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
         except WebSocketDisconnect:
             logger.info("WebSocket disconnected")
             session.signal_disconnected()
-        except Exception as e:
-            if "not connected" in str(e).lower():
-                logger.info("WebSocket closed (server-initiated disconnect)")
+        except RuntimeError as e:
+            # NC-170 Bonus: catch RuntimeError specifically (Starlette raises
+            # RuntimeError("Unexpected ASGI message") on closed connections)
+            if "not connected" in str(e).lower() or "unexpected asgi" in str(e).lower():
+                logger.info("WebSocket closed (server-initiated)")
             else:
-                logger.error("WebSocket error: %s", e)
+                logger.error("WebSocket runtime error: %s", e)
+            session.signal_disconnected()
+        except Exception as e:
+            logger.error("WebSocket error: %s", e)
             session.signal_disconnected()
         finally:
             # NC-154: stop STT gracefully before cancelling tasks

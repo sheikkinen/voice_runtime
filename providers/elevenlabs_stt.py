@@ -17,6 +17,7 @@ import base64
 import contextlib
 import logging
 import os
+import random
 import time
 from typing import Any, Callable
 
@@ -47,6 +48,7 @@ class PersistentSttSession:
         self._inbound_queue: asyncio.Queue[bytes | None] | None = None
         self._speaking_since: float = 0.0
         self.on_committed: Callable[[str], None] | None = None
+        self._reconnect_attempt: int = 0  # NC-170 Fix 2: backoff counter
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open Scribe connection and begin feeding audio."""
@@ -125,8 +127,12 @@ class PersistentSttSession:
                     )
                     asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
 
+    # NC-170 Fix 2: exponential backoff constants
+    _RECONNECT_BASE_DELAY_S = 1.0
+    _RECONNECT_MAX_DELAY_S = 30.0
+
     async def _reconnect_after_error(self) -> None:
-        """Reconnect Scribe after a fatal error (e.g. queue_overflow)."""
+        """Reconnect Scribe after a fatal error with exponential backoff."""
         if self._inbound_queue:
             drained = 0
             while not self._inbound_queue.empty():
@@ -138,12 +144,26 @@ class PersistentSttSession:
             if drained:
                 logger.info("Drained %d stale frames before reconnect", drained)
 
+        # NC-170 Fix 2: exponential backoff with jitter
+        delay = min(
+            self._RECONNECT_BASE_DELAY_S * (2 ** self._reconnect_attempt),
+            self._RECONNECT_MAX_DELAY_S,
+        )
+        delay *= 0.75 + random.random() * 0.5  # jitter ±25%
+
+        logger.info(
+            "Reconnecting Scribe in %.1fs (attempt %d)...",
+            delay, self._reconnect_attempt + 1,
+        )
+        await asyncio.sleep(delay)
+
         try:
-            logger.info("Reconnecting Scribe after fatal error...")
             await self._connect()
-            logger.info("Scribe reconnected successfully after error")
+            logger.info("Scribe reconnected (attempt %d)", self._reconnect_attempt + 1)
+            self._reconnect_attempt = 0
         except Exception as exc:
-            logger.error("Scribe reconnect failed: %s", exc)
+            self._reconnect_attempt += 1
+            logger.error("Scribe reconnect failed (attempt %d): %s", self._reconnect_attempt, exc)
 
     async def _feed_audio(self, inbound: asyncio.Queue[bytes | None]) -> None:
         """Feed inbound audio to Scribe WebSocket."""
