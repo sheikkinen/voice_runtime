@@ -168,7 +168,7 @@ class VoiceSession:
         )
 
         if not event.wait(timeout=timeout):
-            del self._pending_marks[mark_name]
+            self._pending_marks.pop(mark_name, None)
             if not self.is_disconnected:
                 raise TimeoutError(f"Mark '{mark_name}' not received within {timeout}s")
 
@@ -226,10 +226,15 @@ class VoiceSession:
 
     def reset(self) -> None:
         """Reset per-call state for session reuse (multi-call servers)."""
+        # Unblock threads waiting on marks BEFORE clearing state.
+        # Order matters: _disconnected must stay True while events fire
+        # so stale commands see is_disconnected=True and abort.
+        for event in self._pending_marks.values():
+            event.set()
+        self._pending_marks.clear()
         self._disconnected.clear()
         self._ws_connected.clear()
         self.stream_sid = None
-        self._pending_marks.clear()
         # NC-154: reset transport intent fields
         self._disconnect_requested = None
         self._clear_queue = None

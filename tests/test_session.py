@@ -298,6 +298,142 @@ class TestLifecycle:
 # ---------------------------------------------------------------------------
 
 
+class TestResetMarkSafety:
+    """NC-167: reset() must not crash or hang threads waiting on marks.
+
+    Three bugs observed in production logs (2026-03-20):
+
+    Bug 1 (KeyError): reset() clears _pending_marks while send_mark_and_wait
+    is blocked on event.wait(). On timeout, `del _pending_marks[name]` raises
+    KeyError because reset() already cleared the dict.
+
+    Bug 2 (hang): reset() clears _pending_marks without setting events first.
+    Waiting threads block for up to 30s until timeout expires.
+
+    Bug 3 (stale command): reset() clears _disconnected before unblocking
+    waiters. A stale speak command from the previous call sees
+    is_disconnected=False and proceeds to TTS on the new call's session.
+    """
+
+    def test_reset_during_mark_wait_no_keyerror(self):
+        """Bug 1: reset() during send_mark_and_wait must not raise KeyError.
+
+        Observed: Bridge handler 'speak' failed: 'tts_complete'
+        (KeyError str repr matches the log exactly)
+        """
+        from voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        loop = asyncio.new_event_loop()
+        s.set_loop(loop)
+        t = threading.Thread(target=loop.run_forever, daemon=True)
+        t.start()
+
+        errors: list[Exception] = []
+
+        def waiter():
+            try:
+                s.send_mark_and_wait("tts_complete", timeout=1.0)
+            except (KeyError, TimeoutError):
+                # KeyError = the bug; TimeoutError acceptable if disconnected
+                errors.append(KeyError("_pending_marks cleared during wait"))
+            except Exception as e:
+                errors.append(e)
+
+        wait_thread = threading.Thread(target=waiter, daemon=True)
+        wait_thread.start()
+        time.sleep(0.1)  # let waiter register and block
+
+        # Simulate new call arriving — reset clears pending marks
+        s.reset()
+        wait_thread.join(timeout=3.0)
+
+        loop.call_soon_threadsafe(loop.stop)
+        t.join(timeout=2)
+
+        assert not wait_thread.is_alive(), "waiter hung — reset didn't unblock"
+        assert not errors, f"waiter crashed: {errors}"
+
+    def test_reset_unblocks_pending_mark_waiters(self):
+        """Bug 2: reset() must set all pending events before clearing.
+
+        Without this, threads block for up to 30s until timeout expires.
+        The waiter must return within 1s of reset().
+        """
+        from voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        loop = asyncio.new_event_loop()
+        s.set_loop(loop)
+        t = threading.Thread(target=loop.run_forever, daemon=True)
+        t.start()
+
+        returned = threading.Event()
+
+        def waiter():
+            try:
+                s.send_mark_and_wait("tts_complete", timeout=30.0)
+            except Exception:
+                pass
+            returned.set()
+
+        wait_thread = threading.Thread(target=waiter, daemon=True)
+        wait_thread.start()
+        time.sleep(0.1)
+
+        t0 = time.monotonic()
+        s.reset()
+        returned.wait(timeout=2.0)
+        elapsed = time.monotonic() - t0
+
+        loop.call_soon_threadsafe(loop.stop)
+        t.join(timeout=2)
+
+        assert returned.is_set(), "waiter not unblocked — hung for 30s"
+        assert elapsed < 1.0, (
+            f"reset() took {elapsed:.2f}s to unblock waiter — "
+            "must set events before clearing"
+        )
+
+    def test_reset_keeps_disconnected_until_marks_unblocked(self):
+        """Bug 3: _disconnected must remain True until pending marks unblock.
+
+        If reset() clears _disconnected before setting pending events,
+        a stale command sees is_disconnected=False and proceeds with
+        TTS on the new call's session.
+        """
+        from voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        s.signal_disconnected()
+        assert s.is_disconnected
+
+        # Simulate a pending mark from a stale speak command
+        event = threading.Event()
+        s._pending_marks["tts_complete"] = event
+
+        disconnected_during_unblock: list[bool] = []
+
+        original_set = event.set
+
+        def spy_set():
+            # When the event is set, record whether disconnected is still True
+            disconnected_during_unblock.append(s.is_disconnected)
+            original_set()
+
+        event.set = spy_set
+
+        s.reset()
+
+        assert disconnected_during_unblock, (
+            "reset() did not set pending events — Bug 2 not fixed"
+        )
+        assert disconnected_during_unblock[0] is True, (
+            "reset() cleared _disconnected before setting pending events — "
+            "stale commands will see is_disconnected=False and proceed with TTS"
+        )
+
+
 class TestReset:
     def test_reset_clears_disconnected(self):
         from voice_runtime.session import VoiceSession
