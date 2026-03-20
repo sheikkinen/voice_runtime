@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from asyncio import Queue
     from collections.abc import Callable
 
+    from voice_runtime.providers import SttProvider
+
 logger = logging.getLogger(__name__)
 
 VOICE_SERVER_PORT = int(os.getenv("VOICE_SERVER_PORT", "8080"))
@@ -91,9 +93,9 @@ class VoiceSession:
     # --- Transport intent (NC-154) ---
     _disconnect_requested: asyncio.Event | None = field(default=None, repr=False)
     _clear_queue: asyncio.Queue[str] | None = field(default=None, repr=False)
-    stt: Any = field(default=None, repr=False)
-    stt_factory: Callable[[], Any] | None = field(default=None, repr=False)
-    stt_secondary_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    stt: SttProvider | None = field(default=None, repr=False)
+    stt_factory: Callable[[], SttProvider] | None = field(default=None, repr=False)
+    stt_secondary_factory: Callable[[], SttProvider] | None = field(default=None, repr=False)
 
     # --- Loop / lifecycle ---
 
