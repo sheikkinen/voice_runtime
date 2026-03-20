@@ -52,12 +52,26 @@ class AzurePersistentStt:
         self._silence_timeout_ms = silence_timeout_ms
         self._loop: asyncio.AbstractEventLoop | None = None
         self._speaking = False
+        self._direct_sent = False
+        self.__listening = False
         self._barge_in_event: asyncio.Event | None = None
         self._transcript_queue: asyncio.Queue[str | None] = asyncio.Queue()
         self._discard_until: float = 0.0
         self._push_stream: Any | None = None
         self._recognizer: Any | None = None
         self._feed_task: asyncio.Task[None] | None = None
+        self._on_direct_dispatch: Any | None = None
+        self._on_direct_transcribed: Any | None = None
+
+    @property
+    def _listening(self) -> bool:
+        return self.__listening
+
+    @_listening.setter
+    def _listening(self, value: bool) -> None:
+        if value:
+            self._direct_sent = False
+        self.__listening = value
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open push stream, configure recognizer, begin feeding audio."""
@@ -153,7 +167,11 @@ class AzurePersistentStt:
             self._loop.call_soon_threadsafe(self._barge_in_event.set)
 
     def _on_committed(self, evt: Any) -> None:
-        """Handle committed transcript — queue for next_transcript()."""
+        """Handle committed transcript — dispatch or queue.
+
+        NC-136: When not listening (between turns), direct-dispatch to FSM
+        for mid-LLM user speech handling. Otherwise queue for next_transcript().
+        """
         text = evt.result.text
         if self._speaking:
             return
@@ -163,6 +181,21 @@ class AzurePersistentStt:
         cleaned = text.strip()
         if not cleaned:
             return
+
+        if not self._listening and self._on_direct_dispatch and not self._direct_sent:
+            try:
+                self._on_direct_dispatch(cleaned)
+                if self._on_direct_transcribed:
+                    try:
+                        self._on_direct_transcribed(cleaned)
+                    except Exception as cb_exc:
+                        logger.warning("direct transcribed callback failed: %s", cb_exc)
+                self._direct_sent = True
+                logger.info("direct transcribed send: %r", cleaned[:60])
+                return
+            except Exception as exc:
+                logger.warning("direct transcribed send failed: %s", exc)
+
         self._transcript_queue.put_nowait(cleaned)
 
 

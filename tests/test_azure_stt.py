@@ -376,3 +376,112 @@ class TestAzurePerTurnSttListen:
 
         loop.close()
         assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# AzurePersistentStt: direct dispatch (NC-136 mid-LLM user speech)
+# ---------------------------------------------------------------------------
+
+
+class TestAzureDirectDispatch:
+    """_on_direct_dispatch interface parity with ElevenLabs PersistentSttSession."""
+
+    def test_has_direct_dispatch_attribute(self):
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        assert hasattr(stt, "_on_direct_dispatch")
+        assert stt._on_direct_dispatch is None
+
+    def test_has_direct_transcribed_attribute(self):
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        assert hasattr(stt, "_on_direct_transcribed")
+        assert stt._on_direct_transcribed is None
+
+    def test_has_listening_property(self):
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        assert hasattr(stt, "_listening")
+        assert stt._listening is False
+
+    def test_listening_setter_resets_direct_sent(self):
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        stt._direct_sent = True
+        stt._listening = True
+        assert stt._direct_sent is False
+
+    def test_committed_dispatches_when_not_listening(self):
+        """When not listening, _on_committed must call _on_direct_dispatch."""
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        stt._listening = False
+        callback = MagicMock()
+        stt._on_direct_dispatch = callback
+
+        evt = MagicMock()
+        evt.result.text = "hello world"
+        stt._on_committed(evt)
+
+        callback.assert_called_once_with("hello world")
+        assert stt._direct_sent is True
+        # Should NOT be in queue
+        assert stt._transcript_queue.empty()
+
+    def test_committed_queues_when_listening(self):
+        """When listening, _on_committed must queue, not dispatch."""
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        stt._listening = True
+        callback = MagicMock()
+        stt._on_direct_dispatch = callback
+
+        evt = MagicMock()
+        evt.result.text = "hello"
+        stt._on_committed(evt)
+
+        callback.assert_not_called()
+        assert not stt._transcript_queue.empty()
+
+    def test_committed_dispatches_only_once_per_window(self):
+        """_direct_sent flag prevents multiple dispatches."""
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        stt._listening = False
+        callback = MagicMock()
+        stt._on_direct_dispatch = callback
+
+        evt = MagicMock()
+        evt.result.text = "first"
+        stt._on_committed(evt)
+
+        evt2 = MagicMock()
+        evt2.result.text = "second"
+        stt._on_committed(evt2)
+
+        callback.assert_called_once_with("first")
+        # Second goes to queue
+        assert not stt._transcript_queue.empty()
+
+    def test_committed_calls_transcribed_callback(self):
+        """_on_direct_transcribed is called alongside dispatch."""
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        stt._listening = False
+        stt._on_direct_dispatch = MagicMock()
+        transcribed_cb = MagicMock()
+        stt._on_direct_transcribed = transcribed_cb
+
+        evt = MagicMock()
+        evt.result.text = "hello"
+        stt._on_committed(evt)
+
+        transcribed_cb.assert_called_once_with("hello")
