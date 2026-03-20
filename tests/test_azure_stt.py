@@ -485,3 +485,40 @@ class TestAzureDirectDispatch:
         stt._on_committed(evt)
 
         transcribed_cb.assert_called_once_with("hello")
+
+    @pytest.mark.asyncio
+    async def test_direct_sent_resets_after_listen_cycle(self):
+        """NC-163: next_transcript must toggle _listening to reset _direct_sent.
+
+        Without this, mid-LLM speech (NC-136) fires only once per call
+        instead of once per listening window.
+
+        Condemning test: after a direct dispatch + listen cycle, a second
+        between-turn transcript must also trigger direct dispatch.
+        """
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
+
+        stt = AzurePersistentStt(subscription_key="test-key")
+        callback = MagicMock()
+        stt._on_direct_dispatch = callback
+
+        # 1. First between-turn direct dispatch
+        evt1 = MagicMock()
+        evt1.result.text = "first interrupt"
+        stt._on_committed(evt1)
+        assert callback.call_count == 1
+        assert stt._direct_sent is True
+
+        # 2. Simulate a listen cycle (next_transcript with queued data)
+        stt._transcript_queue.put_nowait("normal turn")
+        result = await stt.next_transcript(timeout=1.0)
+        assert result == "normal turn"
+
+        # 3. Second between-turn transcript must ALSO direct-dispatch
+        evt2 = MagicMock()
+        evt2.result.text = "second interrupt"
+        stt._on_committed(evt2)
+        assert callback.call_count == 2, (
+            f"Expected 2 direct dispatches but got {callback.call_count}. "
+            "_direct_sent was not reset by next_transcript() listen cycle."
+        )

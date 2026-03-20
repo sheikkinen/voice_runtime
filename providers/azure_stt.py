@@ -139,10 +139,13 @@ class AzurePersistentStt:
 
     async def next_transcript(self, timeout: float = 30.0) -> str | None:
         """Await next committed transcript from recognized event."""
+        self._listening = True
         try:
             return await asyncio.wait_for(self._transcript_queue.get(), timeout=timeout)
         except TimeoutError:
             return None
+        finally:
+            self._listening = False
 
     async def _feed_audio(self, inbound: asyncio.Queue[bytes | None]) -> None:
         """Feed inbound audio to Azure push stream."""
