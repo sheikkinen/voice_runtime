@@ -2,6 +2,8 @@
 
 NC-165: SttProvider Protocol defines the consumer-facing contract for
 all STT providers. Enforced by type checker (pyright/mypy), not at runtime.
+NC-166: Simplified — routing decisions moved to consumers. Provider fires
+on_committed callback, consumer decides action.
 """
 
 from __future__ import annotations
@@ -16,16 +18,14 @@ if TYPE_CHECKING:
 class SttProvider(Protocol):
     """Structural interface for speech-to-text providers.
 
-    Consumers (bridge_handlers.py, stt.py, twilio_ws.py) access these
-    members on session.stt. All STT providers and SttTee must satisfy
-    this Protocol.
+    NC-166: Provider normalizes audio → text and fires on_committed
+    for every committed utterance past echo discard. Consumer decides
+    routing (queue, dispatch, ignore). Provider does not make policy
+    decisions.
     """
 
-    _on_direct_dispatch: Callable[[str], None] | None
-    _on_direct_transcribed: Callable[[str], None] | None
+    on_committed: Callable[[str], None] | None
 
     def set_speaking(self, speaking: bool) -> None: ...
-    def arm_barge_in(self) -> asyncio.Event: ...
-    async def next_transcript(self, timeout: float = 30.0) -> str | None: ...
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None: ...
     async def stop(self) -> None: ...

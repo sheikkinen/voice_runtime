@@ -1,9 +1,10 @@
 """SttTee — fan-out adapter for primary + secondary STT providers.
 
 NC-164: Runs two STT providers on the same audio stream. The primary
-drives production (transcript queue, direct dispatch, barge-in). The
-secondary receives the same frames for logging/comparison only.
+drives production (on_committed callback). The secondary receives
+the same frames for logging/comparison only.
 
+NC-166: Simplified — on_committed proxied to primary only.
 Secondary errors never propagate to the caller.
 """
 
@@ -12,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from typing import Any
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +24,10 @@ class SttTee:
     The primary provider is the production path. The secondary
     receives the same audio frames but its transcripts are never
     routed to the FSM — they are handled by the secondary's own
-    _on_committed (typically logging only).
+    on_committed (typically logging only).
 
-    All interactive methods (arm_barge_in, next_transcript, direct
-    dispatch callbacks) delegate to primary only. set_speaking()
-    relays to both (secondary needs it for echo discard).
+    on_committed and set_speaking() delegate to primary.
+    set_speaking() relays to both (secondary needs it for echo discard).
     """
 
     def __init__(self, primary: Any, secondary: Any) -> None:
@@ -36,40 +36,21 @@ class SttTee:
         self._fanout_task: asyncio.Task[None] | None = None
         self._primary_queue: asyncio.Queue[bytes | None] | None = None
         self._secondary_queue: asyncio.Queue[bytes | None] | None = None
+        logger.info(
+            "SttTee created: primary=%s, secondary=%s",
+            type(primary).__name__,
+            type(secondary).__name__,
+        )
 
-    # --- Proxy: transcript queue (read by stt.py _next_stable_transcript) ---
-
-    @property
-    def _transcript_queue(self) -> Any:
-        return self.primary._transcript_queue
-
-    # --- Proxy: _listening (set by next_transcript) ---
-
-    @property
-    def _listening(self) -> bool:
-        return self.primary._listening
-
-    @_listening.setter
-    def _listening(self, value: bool) -> None:
-        self.primary._listening = value
-
-    # --- Proxy: direct dispatch (set by bridge_handlers) ---
+    # --- Proxy: on_committed (primary only) ---
 
     @property
-    def _on_direct_dispatch(self) -> Any:
-        return self.primary._on_direct_dispatch
+    def on_committed(self) -> Callable[[str], None] | None:
+        return self.primary.on_committed
 
-    @_on_direct_dispatch.setter
-    def _on_direct_dispatch(self, value: Any) -> None:
-        self.primary._on_direct_dispatch = value
-
-    @property
-    def _on_direct_transcribed(self) -> Any:
-        return self.primary._on_direct_transcribed
-
-    @_on_direct_transcribed.setter
-    def _on_direct_transcribed(self, value: Any) -> None:
-        self.primary._on_direct_transcribed = value
+    @on_committed.setter
+    def on_committed(self, value: Callable[[str], None] | None) -> None:
+        self.primary.on_committed = value
 
     # --- Relay to both ---
 
@@ -80,14 +61,6 @@ class SttTee:
             self.secondary.set_speaking(speaking)
         except Exception:
             logger.warning("Secondary STT set_speaking failed", exc_info=True)
-
-    # --- Primary-only methods ---
-
-    def arm_barge_in(self) -> asyncio.Event:
-        return self.primary.arm_barge_in()
-
-    async def next_transcript(self, timeout: float = 30.0) -> str | None:
-        return await self.primary.next_transcript(timeout=timeout)
 
     # --- Lifecycle ---
 

@@ -38,53 +38,29 @@ class TestCreateTts:
 
 
 class TestCreateStt:
-    def test_default_is_persistent(self):
+    def test_default_is_elevenlabs(self):
         from voice_runtime.stt import create_stt
 
         stt = create_stt()
         assert type(stt).__name__ == "PersistentSttSession"
 
-    def test_persistent_mode(self):
+    def test_explicit_elevenlabs(self):
         from voice_runtime.stt import create_stt
 
-        stt = create_stt(provider="elevenlabs", mode="persistent")
+        stt = create_stt(provider="elevenlabs")
         assert type(stt).__name__ == "PersistentSttSession"
 
-    def test_per_turn_mode(self):
+    def test_azure_provider(self):
         from voice_runtime.stt import create_stt
 
-        stt = create_stt(provider="elevenlabs", mode="per_turn")
-        assert type(stt).__name__ == "PerTurnStt"
-
-    def test_azure_persistent(self):
-        from voice_runtime.stt import create_stt
-
-        stt = create_stt(provider="azure", mode="persistent", subscription_key="test")
+        stt = create_stt(provider="azure", subscription_key="test")
         assert type(stt).__name__ == "AzurePersistentStt"
-
-    def test_azure_per_turn(self):
-        from voice_runtime.stt import create_stt
-
-        stt = create_stt(provider="azure", mode="per_turn", subscription_key="test")
-        assert type(stt).__name__ == "AzurePerTurnStt"
-
-    def test_azure_unknown_mode_raises(self):
-        from voice_runtime.stt import create_stt
-
-        with pytest.raises(ValueError, match="Unknown Azure STT mode"):
-            create_stt(provider="azure", mode="invalid")
 
     def test_unknown_provider_raises(self):
         from voice_runtime.stt import create_stt
 
         with pytest.raises(ValueError, match="Unknown STT provider"):
             create_stt(provider="nonexistent")
-
-    def test_unknown_mode_raises(self):
-        from voice_runtime.stt import create_stt
-
-        with pytest.raises(ValueError, match="Unknown STT mode"):
-            create_stt(provider="elevenlabs", mode="invalid")
 
 
 class TestCreateTransport:

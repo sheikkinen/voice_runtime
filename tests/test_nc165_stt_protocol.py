@@ -1,8 +1,7 @@
 """NC-165: SttProvider Protocol conformance tests.
 
 Verify that all STT providers and SttTee satisfy the SttProvider Protocol.
-These tests use pyright/mypy-style structural checking at runtime via
-Protocol attribute inspection.
+NC-166: Protocol simplified to 4 members (on_committed, set_speaking, start, stop).
 """
 
 from __future__ import annotations
@@ -15,19 +14,16 @@ import pytest
 from voice_runtime.providers import SttProvider
 
 
-# --- Protocol member catalog ---
+# --- Protocol member catalog (NC-166) ---
 
 REQUIRED_METHODS = [
     "set_speaking",
-    "arm_barge_in",
-    "next_transcript",
     "start",
     "stop",
 ]
 
 REQUIRED_ATTRIBUTES = [
-    "_on_direct_dispatch",
-    "_on_direct_transcribed",
+    "on_committed",
 ]
 
 
@@ -43,9 +39,7 @@ class TestSttProviderProtocolExists:
 
     def test_protocol_has_required_attributes(self):
         for attr in REQUIRED_ATTRIBUTES:
-            annotations = getattr(SttProvider, "__protocol_attrs__", set())
-            # Protocol members appear in annotations
-            assert attr in SttProvider.__annotations__ or attr in annotations, (
+            assert attr in SttProvider.__annotations__, (
                 f"SttProvider missing attribute: {attr}"
             )
 
@@ -71,12 +65,11 @@ class TestAzureSttConformance:
                 f"AzurePersistentStt missing attribute: {attr}"
             )
 
-    def test_attribute_defaults_are_none(self):
+    def test_on_committed_default_is_none(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
 
         stt = AzurePersistentStt()
-        assert stt._on_direct_dispatch is None
-        assert stt._on_direct_transcribed is None
+        assert stt.on_committed is None
 
 
 class TestElevenLabsSttConformance:
@@ -100,12 +93,11 @@ class TestElevenLabsSttConformance:
                 f"PersistentSttSession missing attribute: {attr}"
             )
 
-    def test_attribute_defaults_are_none(self):
+    def test_on_committed_default_is_none(self):
         from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
         stt = PersistentSttSession()
-        assert stt._on_direct_dispatch is None
-        assert stt._on_direct_transcribed is None
+        assert stt.on_committed is None
 
 
 class TestSttTeeConformance:
@@ -125,12 +117,10 @@ class TestSttTeeConformance:
                 f"SttTee missing method: {method}"
             )
 
-    def test_has_all_required_attributes(self):
+    def test_has_on_committed_property(self):
         tee = self._make_tee()
-        for attr in REQUIRED_ATTRIBUTES:
-            assert hasattr(tee, attr), (
-                f"SttTee missing attribute: {attr}"
-            )
+        # on_committed is a property proxy — verify it exists
+        assert hasattr(tee, "on_committed")
 
 
 class TestSessionFieldTypes:
@@ -141,7 +131,6 @@ class TestSessionFieldTypes:
 
         hints = VoiceSession.__dataclass_fields__
         stt_field = hints["stt"]
-        # After NC-165, the type should reference SttProvider, not Any
         type_str = str(stt_field.type)
         assert "Any" not in type_str, (
             f"session.stt still typed as Any: {stt_field.type}"

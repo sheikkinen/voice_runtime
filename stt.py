@@ -1,37 +1,24 @@
-"""STT provider factory. Supports persistent and per-turn modes."""
+"""STT provider factory.
+
+NC-166: Per-turn mode removed. All providers are persistent.
+"""
 
 from __future__ import annotations
 
 
-def create_stt(provider: str = "elevenlabs", mode: str = "persistent", **kwargs):
+def create_stt(provider: str = "elevenlabs", **kwargs):
     """Create STT provider instance.
 
     Args:
-        provider: STT provider name ("elevenlabs").
-        mode: "persistent" (one WebSocket per call, barge-in, echo discard,
-              stability grace) or "per_turn" (new connection per listen() call).
+        provider: STT provider name ("elevenlabs" or "azure").
         **kwargs: Passed to provider constructor.
     """
     if provider == "elevenlabs":
-        if mode == "persistent":
-            from voice_runtime.providers.elevenlabs_stt import (
-                PersistentSttSession,
-            )
+        from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
-            return PersistentSttSession(**kwargs)
-        elif mode == "per_turn":
-            from voice_runtime.providers.elevenlabs_stt import PerTurnStt
-
-            return PerTurnStt(**kwargs)
-        raise ValueError(f"Unknown STT mode: {mode}")
+        return PersistentSttSession(**kwargs)
     elif provider == "azure":
-        if mode == "persistent":
-            from voice_runtime.providers.azure_stt import AzurePersistentStt
+        from voice_runtime.providers.azure_stt import AzurePersistentStt
 
-            return AzurePersistentStt(**kwargs)
-        elif mode == "per_turn":
-            from voice_runtime.providers.azure_stt import AzurePerTurnStt
-
-            return AzurePerTurnStt(**kwargs)
-        raise ValueError(f"Unknown Azure STT mode: {mode}")
+        return AzurePersistentStt(**kwargs)
     raise ValueError(f"Unknown STT provider: {provider}")

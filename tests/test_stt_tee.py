@@ -1,8 +1,10 @@
 """RED phase tests for NC-164: Multi-Provider STT with Secondary Logging.
 
 Tests the SttTee adapter that fans audio to a primary + secondary STT,
-relays set_speaking to both, and logs secondary transcripts without
-routing them to FSM.
+relays set_speaking to both, and proxies on_committed to primary.
+
+NC-166: Simplified — removed barge-in, direct dispatch, transcript queue,
+        listening proxies. Only on_committed proxy remains.
 """
 
 from __future__ import annotations
@@ -25,45 +27,25 @@ class TestSttTeeInit:
         assert tee.primary is primary
         assert tee.secondary is secondary
 
-    def test_exposes_primary_transcript_queue(self):
-        from voice_runtime.stt_tee import SttTee
-
-        primary = MagicMock()
-        primary._transcript_queue = asyncio.Queue()
-        secondary = MagicMock()
-        tee = SttTee(primary, secondary)
-        assert tee._transcript_queue is primary._transcript_queue
-
-    def test_proxies_direct_dispatch_to_primary(self):
+    def test_proxies_on_committed_to_primary(self):
         from voice_runtime.stt_tee import SttTee
 
         primary = MagicMock()
         secondary = MagicMock()
         tee = SttTee(primary, secondary)
         cb = MagicMock()
-        tee._on_direct_dispatch = cb
-        assert primary._on_direct_dispatch is cb
+        tee.on_committed = cb
+        assert primary.on_committed is cb
 
-    def test_proxies_direct_transcribed_to_primary(self):
+    def test_reads_on_committed_from_primary(self):
         from voice_runtime.stt_tee import SttTee
 
         primary = MagicMock()
-        secondary = MagicMock()
-        tee = SttTee(primary, secondary)
         cb = MagicMock()
-        tee._on_direct_transcribed = cb
-        assert primary._on_direct_transcribed is cb
-
-    def test_does_not_wire_dispatch_to_secondary(self):
-        from voice_runtime.stt_tee import SttTee
-
-        primary = MagicMock()
+        primary.on_committed = cb
         secondary = MagicMock()
-        secondary._on_direct_dispatch = None
         tee = SttTee(primary, secondary)
-        tee._on_direct_dispatch = MagicMock()
-        # Secondary must remain None
-        assert secondary._on_direct_dispatch is None
+        assert tee.on_committed is cb
 
 
 class TestSttTeeSetSpeaking:
@@ -88,39 +70,6 @@ class TestSttTeeSetSpeaking:
         tee = SttTee(primary, secondary)
         tee.set_speaking(False)  # must not raise
         primary.set_speaking.assert_called_once_with(False)
-
-
-class TestSttTeeArmBargeIn:
-    """arm_barge_in delegates to primary only."""
-
-    def test_arms_primary_only(self):
-        from voice_runtime.stt_tee import SttTee
-
-        primary = MagicMock()
-        evt = asyncio.Event()
-        primary.arm_barge_in.return_value = evt
-        secondary = MagicMock()
-        tee = SttTee(primary, secondary)
-        result = tee.arm_barge_in()
-        assert result is evt
-        primary.arm_barge_in.assert_called_once()
-        secondary.arm_barge_in.assert_not_called()
-
-
-class TestSttTeeNextTranscript:
-    """next_transcript delegates to primary."""
-
-    @pytest.mark.asyncio
-    async def test_delegates_to_primary(self):
-        from voice_runtime.stt_tee import SttTee
-
-        primary = AsyncMock()
-        primary.next_transcript.return_value = "hello"
-        secondary = MagicMock()
-        tee = SttTee(primary, secondary)
-        result = await tee.next_transcript(timeout=5.0)
-        assert result == "hello"
-        primary.next_transcript.assert_awaited_once_with(timeout=5.0)
 
 
 class TestSttTeeLifecycle:
@@ -208,25 +157,3 @@ class TestSttTeeLifecycle:
         await tee.start(inbound)  # must not raise
         primary.start.assert_awaited_once()
         await tee.stop()
-
-
-class TestSttTeeListeningProxy:
-    """_listening property proxies to primary."""
-
-    def test_get_listening(self):
-        from voice_runtime.stt_tee import SttTee
-
-        primary = MagicMock()
-        primary._listening = True
-        secondary = MagicMock()
-        tee = SttTee(primary, secondary)
-        assert tee._listening is True
-
-    def test_set_listening(self):
-        from voice_runtime.stt_tee import SttTee
-
-        primary = MagicMock()
-        secondary = MagicMock()
-        tee = SttTee(primary, secondary)
-        tee._listening = True
-        assert primary._listening is True
