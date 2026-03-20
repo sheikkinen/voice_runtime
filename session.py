@@ -93,6 +93,7 @@ class VoiceSession:
     _clear_queue: asyncio.Queue[str] | None = field(default=None, repr=False)
     stt: Any = field(default=None, repr=False)
     stt_factory: Callable[[], Any] | None = field(default=None, repr=False)
+    stt_secondary_factory: Callable[[], Any] | None = field(default=None, repr=False)
 
     # --- Loop / lifecycle ---
 

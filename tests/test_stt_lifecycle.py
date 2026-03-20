@@ -36,6 +36,7 @@ def _make_session():
     session._clear_queue = None
     session.stt_factory = None
     session.stt = None
+    session.stt_secondary_factory = None
     return session
 
 

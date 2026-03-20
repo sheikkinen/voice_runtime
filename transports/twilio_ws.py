@@ -130,7 +130,14 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
 
                     # NC-154: STT lifecycle — create via factory if provided
                     if session.stt_factory is not None and session.stt is None:
-                        session.stt = session.stt_factory()
+                        primary_stt = session.stt_factory()
+                        # NC-164: wrap with SttTee if secondary factory is set
+                        if session.stt_secondary_factory is not None:
+                            from voice_runtime.stt_tee import SttTee
+                            secondary_stt = session.stt_secondary_factory()
+                            session.stt = SttTee(primary_stt, secondary_stt)
+                        else:
+                            session.stt = primary_stt
                     if session.stt is not None:
                         stt_task = asyncio.create_task(
                             session.stt.start(session.inbound), name="stt_start"
