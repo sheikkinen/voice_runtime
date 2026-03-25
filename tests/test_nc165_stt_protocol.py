@@ -6,13 +6,9 @@ NC-166: Protocol simplified to 4 members (on_committed, set_speaking, start, sto
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock
 
-import pytest
-
 from voice_runtime.providers import SttProvider
-
 
 # --- Protocol member catalog (NC-166) ---
 

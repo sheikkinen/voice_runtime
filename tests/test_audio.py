@@ -12,9 +12,6 @@ import subprocess
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ---------------------------------------------------------------------------
 # G.711 μ-law codec
 # ---------------------------------------------------------------------------
@@ -138,28 +135,28 @@ class TestConstants:
 
 class TestWriteMethods:
     def test_write_caller_enqueues_single_frame(self):
-        from voice_runtime.audio import AudioMixer, FRAME_BYTES
+        from voice_runtime.audio import FRAME_BYTES, AudioMixer
 
         m = AudioMixer()
         m.write_caller(b"\x01" * FRAME_BYTES)
         assert len(m._caller) == 1
 
     def test_write_agent_enqueues_single_frame(self):
-        from voice_runtime.audio import AudioMixer, FRAME_BYTES
+        from voice_runtime.audio import FRAME_BYTES, AudioMixer
 
         m = AudioMixer()
         m.write_agent(b"\x02" * FRAME_BYTES)
         assert len(m._agent) == 1
 
     def test_write_caller_splits_large_chunk(self):
-        from voice_runtime.audio import AudioMixer, FRAME_BYTES
+        from voice_runtime.audio import FRAME_BYTES, AudioMixer
 
         m = AudioMixer()
         m.write_caller(b"\x03" * (FRAME_BYTES * 4))
         assert len(m._caller) == 4
 
     def test_write_caller_pads_partial_frame(self):
-        from voice_runtime.audio import AudioMixer, FRAME_BYTES
+        from voice_runtime.audio import FRAME_BYTES, AudioMixer
 
         m = AudioMixer()
         m.write_caller(b"\x05" * 100)
@@ -170,7 +167,7 @@ class TestWriteMethods:
         assert frame[100:] == b"\xff" * 60
 
     def test_deque_maxlen_drops_oldest(self):
-        from voice_runtime.audio import AudioMixer, FRAME_BYTES, MAX_FRAMES
+        from voice_runtime.audio import FRAME_BYTES, MAX_FRAMES, AudioMixer
 
         m = AudioMixer()
         for i in range(MAX_FRAMES + 1):
@@ -223,7 +220,7 @@ class TestMixerLifecycle:
 
 class TestMixLoop:
     def test_empty_deques_produce_silence(self):
-        from voice_runtime.audio import AudioMixer, SILENCE_FRAME
+        from voice_runtime.audio import SILENCE_FRAME, AudioMixer
 
         m = AudioMixer()
         written: list[bytes] = []

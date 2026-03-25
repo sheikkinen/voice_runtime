@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Fix 1: Silent exception handlers
 # ---------------------------------------------------------------------------
@@ -417,6 +416,7 @@ class TestBonusExceptionMatching:
         """twilio_ws should catch RuntimeError specifically, not in generic Exception."""
         import ast
         import inspect
+
         from voice_runtime.transports import twilio_ws
 
         source = inspect.getsource(twilio_ws)

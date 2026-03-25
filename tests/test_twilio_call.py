@@ -83,9 +83,8 @@ class TestInitiateOutboundCall:
                 "VOICE_STREAM_URL": "https://x",
             },
             clear=False,
-        ):
-            with pytest.raises(RuntimeError, match="TWILIO_PHONE_NUMBER"):
-                initiate_outbound_call("+358401234567")
+        ), pytest.raises(RuntimeError, match="TWILIO_PHONE_NUMBER"):
+            initiate_outbound_call("+358401234567")
 
     def test_successful_call_returns_sid(self):
         from voice_runtime.transports.twilio_call import initiate_outbound_call
@@ -104,9 +103,8 @@ class TestInitiateOutboundCall:
                 "VOICE_STREAM_URL": "https://example.ngrok.io",
             },
             clear=False,
-        ):
-            with patch("twilio.rest.Client", return_value=mock_client):
-                sid = initiate_outbound_call("+358401234567")
+        ), patch("twilio.rest.Client", return_value=mock_client):
+            sid = initiate_outbound_call("+358401234567")
 
         assert sid == "CA123"
         mock_client.calls.create.assert_called_once()

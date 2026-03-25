@@ -11,13 +11,9 @@ Removes: _on_direct_dispatch, _on_direct_transcribed, _direct_sent,
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock
 
-import pytest
-
 from voice_runtime.providers import SttProvider
-
 
 # ---------------------------------------------------------------------------
 # SttProvider Protocol: new shape

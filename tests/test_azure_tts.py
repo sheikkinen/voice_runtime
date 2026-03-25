@@ -11,8 +11,6 @@ from __future__ import annotations
 import threading
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 def _make_session(disconnected: bool = False):
     """Create a mock VoiceSession with working queue methods."""

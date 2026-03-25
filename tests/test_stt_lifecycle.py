@@ -9,12 +9,10 @@ had zero test coverage.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
