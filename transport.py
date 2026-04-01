@@ -18,3 +18,12 @@ def create_transport(provider: str = "twilio", **kwargs):
 
         return twilio_ws
     raise ValueError(f"Unknown transport: {provider}")
+
+
+def get_sms_transport(provider: str = "twilio"):
+    """Return SMS transport module for the given provider."""
+    if provider == "twilio":
+        from voice_runtime.transports import twilio_sms
+
+        return twilio_sms
+    raise ValueError(f"Unknown SMS transport: {provider}")

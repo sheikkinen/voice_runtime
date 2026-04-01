@@ -4,7 +4,7 @@ Provider-agnostic voice call runtime for telephony projects. Manages audio queue
 
 ## Quick Example
 
-Make a call, say something, listen for a response, hang up:
+Make a call, say something, listen for a response via `on_committed` callback, hang up:
 
 ```python
 import asyncio
@@ -13,11 +13,11 @@ import time
 import uvicorn
 from fastapi import FastAPI
 
-from projects.voice_runtime.session import VoiceSession
-from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
-from projects.voice_runtime.transports.twilio_call import initiate_outbound_call
-from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
-from projects.voice_runtime.providers.elevenlabs_stt import PerTurnStt
+from voice_runtime.session import VoiceSession
+from voice_runtime.transports.twilio_ws import register_voice_websocket
+from voice_runtime.transports.twilio_call import initiate_outbound_call
+from voice_runtime.tts import create_tts
+from voice_runtime.stt import create_stt
 
 # 1. Create session and start WebSocket server
 session = VoiceSession()
@@ -41,16 +41,23 @@ session.call_sid = call_sid
 session.wait_for_ws_connect(timeout=30)
 
 # 3. Speak
-tts = ElevenLabsTTS()
+tts = create_tts()  # default: ElevenLabs
 tts.speak("Hello! How are you today?", session)
 session.send_mark_and_wait("after-greeting")  # block until playback done
 
-# 4. Listen
-time.sleep(0.3)          # echo discard window
-session.clear_inbound()  # drain stale audio
-stt = PerTurnStt()
-transcript = stt.listen(session, timeout=30)
-print(f"Caller said: {transcript}")
+# 4. Listen — persistent STT with on_committed callback
+transcript_event = threading.Event()
+heard = []
+
+def on_committed(text: str):
+    heard.append(text)
+    transcript_event.set()
+
+session.stt_factory = lambda: create_stt()  # default: ElevenLabs
+# Transport starts STT automatically; on_committed fires for each utterance
+
+transcript_event.wait(timeout=30)
+print(f"Caller said: {heard}")
 
 # 5. Hang up
 session.request_disconnect()
@@ -64,14 +71,15 @@ Consumer thread              voice_runtime                 Transport (Twilio)
 initiate_outbound_call()  →  Twilio REST calls.create()  → Twilio dials phone
                              build_stream_twiml()           with <Connect><Stream>
 wait_for_ws_connect()     ←  signal_ws_connected()       ← Twilio opens /voice WS
+                                                            stt_factory() → stt.start()
 tts.speak(text, session)  →  ffmpeg MP3→μ-law             → send_audio task
                              put_outbound_sync()             sends base64 frames
 send_mark_and_wait()      →  get_pending_mark()           → WS sends mark JSON
                           ←  signal_mark_received()       ← WS receives mark echo
-stt.listen(session)       ←  put_inbound()                ← WS receives media frames
-                             → ElevenLabs Scribe WS          decodes base64 → bytes
+on_committed(text)        ←  stt.on_committed()           ← WS receives media frames
+                                                             decodes base64 → STT
 request_disconnect()      →  _disconnect_requested.set()  → watch_disconnect task
-                                                             closes WebSocket
+                                                             stt.stop(), closes WS
                                                              Twilio ends call
 ```
 
@@ -85,16 +93,51 @@ request_disconnect()      →  _disconnect_requested.set()  → watch_disconnect
 ├──────────────────────────────────────────────┤
 │ voice_runtime                                │
 │  - VoiceSession: queues, marks, intents      │
-│  - Providers: ElevenLabs STT / TTS           │
+│  - Factories: create_stt / create_tts        │
+│  - Providers: ElevenLabs, Azure (STT + TTS)  │
+│  - SttTee: dual-provider fan-out             │
 │  - Audio: G.711 μ-law codec + mixer          │
 ├──────────────────────────────────────────────┤
 │ Transport (protocol-specific)                │
 │  - twilio_ws: Media Streams WebSocket        │
-│  - twilio_call: REST call initiation + XML   │
+│  - twilio_call: REST call initiation + TwiML │
 └──────────────────────────────────────────────┘
 ```
 
 **Key invariant:** VoiceSession has zero transport or provider imports. Consumers never import Twilio or ElevenLabs directly — they use factories and the intent API.
+
+## Factories
+
+Provider-agnostic factories mirror the yamlgraph `create_llm()` pattern:
+
+```python
+from voice_runtime.stt import create_stt, get_stt_class
+from voice_runtime.tts import create_tts
+from voice_runtime.transport import create_transport
+
+stt = create_stt(provider="elevenlabs")     # or "azure"
+tts = create_tts(provider="elevenlabs")     # or "azure"
+transport = create_transport(provider="twilio")
+
+# get_stt_class returns the class without instantiating (for factory arguments)
+SttClass = get_stt_class(provider="elevenlabs")
+session.stt_factory = lambda: SttClass(language_code="en")
+```
+
+## SttProvider Protocol
+
+All STT providers implement this structural protocol (defined in `providers/__init__.py`):
+
+```python
+class SttProvider(Protocol):
+    on_committed: Callable[[str], None] | None   # callback for committed transcripts
+
+    def set_speaking(self, speaking: bool) -> None: ...
+    async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None: ...
+    async def stop(self) -> None: ...
+```
+
+The `on_committed` callback is the primary mechanism for receiving transcriptions. Transport starts/stops the provider; the provider fires `on_committed` for every committed utterance past the echo discard window. The consumer decides routing (queue, dispatch, ignore).
 
 ## VoiceSession
 
@@ -146,10 +189,17 @@ Both are thread-safe. The transport watches `_disconnect_requested` (asyncio.Eve
 Attach an STT factory and the transport manages its lifecycle automatically:
 
 ```python
-from projects.voice_runtime.stt import create_stt
+from voice_runtime.stt import create_stt
 
-session.stt_factory = lambda: create_stt(mode="persistent")
+session.stt_factory = lambda: create_stt(provider="elevenlabs")
 # Transport calls stt_factory() on stream start, stt.stop() on disconnect
+```
+
+Optional secondary STT for parallel logging/comparison (via `SttTee`):
+
+```python
+session.stt_secondary_factory = lambda: create_stt(provider="azure")
+# Transport wraps both in SttTee — primary drives on_committed, secondary logs only
 ```
 
 ### Lifecycle
@@ -167,7 +217,7 @@ session.stt_factory = lambda: create_stt(mode="persistent")
 Optional two-channel mixer for real-time call monitoring (requires `ffplay`):
 
 ```python
-from projects.voice_runtime.audio import AudioMixer
+from voice_runtime.audio import AudioMixer
 
 mixer = AudioMixer()
 mixer.start()
@@ -190,8 +240,7 @@ session.set_mixer(mixer)
 Registers a `/voice` endpoint on a FastAPI app implementing Twilio Media Streams:
 
 ```python
-from fastapi import FastAPI
-from projects.voice_runtime.transports.twilio_ws import register_voice_websocket
+from voice_runtime.transports.twilio_ws import register_voice_websocket
 
 app = FastAPI()
 register_voice_websocket(app, session)
@@ -202,16 +251,16 @@ Runs 5 async tasks on stream start: `send_audio`, `send_marks`, `watch_disconnec
 ### Call Initiation
 
 ```python
-from projects.voice_runtime.transports.twilio_call import (
+from voice_runtime.transports.twilio_call import (
     initiate_outbound_call,
-    build_stream_xml,
+    build_stream_twiml,  # alias: build_stream_xml
 )
 
 # Outbound: dial phone, Twilio connects back to /voice WebSocket
 call_sid = initiate_outbound_call("+358401234567")
 
-# Inbound webhook: return XML that tells Twilio to stream audio to /voice
-xml = build_stream_xml("wss://example.ngrok.io")
+# Inbound webhook: return TwiML that tells Twilio to stream audio to /voice
+xml = build_stream_twiml("wss://example.ngrok.io")
 ```
 
 ## Providers
@@ -221,49 +270,78 @@ xml = build_stream_xml("wss://example.ngrok.io")
 Streams text → ElevenLabs API → ffmpeg (MP3 → μ-law 8kHz) → session outbound queue.
 
 ```python
-from projects.voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+from voice_runtime.tts import create_tts
 
-tts = ElevenLabsTTS()
+tts = create_tts(provider="elevenlabs")
 result = tts.speak("Hello", session, stop_event=barge_in_event)
 # result: {"last_spoken": "Hello"} or {"last_spoken": "Hello", "call_disconnected": True}
 ```
 
-Supports barge-in interrupt: pass a `threading.Event` as `stop_event`; set it from another thread to cut TTS mid-stream.
+Supports barge-in interrupt: pass a `threading.Event` as `stop_event`; set it from another thread to cut TTS mid-stream. Result may include `{"interrupted": True}`.
 
 ### ElevenLabs STT
 
-Two modes:
+Persistent Scribe WebSocket per call lifetime. Barge-in detection, echo discard, reconnect on fatal errors.
 
 ```python
-from projects.voice_runtime.stt import create_stt
+from voice_runtime.stt import create_stt
 
-# Persistent: one Scribe WebSocket per call lifetime
-# Barge-in detection, echo discard, stability grace
-stt = create_stt(mode="persistent")
-
-# Per-turn: new connection per listen() call
-# Simpler, no barge-in
-stt = create_stt(mode="per_turn")
+stt = create_stt(provider="elevenlabs")
+stt.on_committed = lambda text: print(f"Heard: {text}")
+await stt.start(session.inbound)
+# ... later
+await stt.stop()
 ```
 
-**PerTurnStt** (simple, per-call):
+Typically managed by the transport via `session.stt_factory` rather than started manually.
+
+### Azure TTS
+
+Streams text → Azure Speech SDK → mulaw 8kHz → session outbound queue.
+
 ```python
-stt = PerTurnStt()
-transcript = stt.listen(session, timeout=30)
+from voice_runtime.tts import create_tts
+
+tts = create_tts(provider="azure")
+result = tts.speak("Hello", session, stop_event=barge_in_event)
 ```
 
-**PersistentSttSession** (advanced, managed by transport via `stt_factory`):
-- Barge-in detection during TTS via partial transcripts
-- Echo discard window after TTS ends
-- Stability grace for premature VAD commits
-- Optional `_on_direct_dispatch` callback for mid-LLM speech
+Same `speak()` interface as ElevenLabs. Uses `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, `AZURE_TTS_VOICE` env vars.
+
+### Azure STT
+
+Persistent Azure Speech SDK recognizer with continuous recognition.
+
+```python
+from voice_runtime.stt import create_stt
+
+stt = create_stt(provider="azure", language_code="fi-FI", silence_timeout_ms=1500)
+stt.on_committed = lambda text: print(f"Heard: {text}")
+await stt.start(session.inbound)
+```
+
+Same `SttProvider` protocol as ElevenLabs. Echo discard window (400ms) after TTS ends.
+
+### SttTee (Dual STT)
+
+Fan-out adapter running two STT providers on the same audio stream:
+
+```python
+from voice_runtime.stt_tee import SttTee
+
+tee = SttTee(primary=elevenlabs_stt, secondary=azure_stt)
+tee.on_committed = handler  # proxied to primary only
+await tee.start(session.inbound)
+```
+
+Primary drives production (`on_committed`). Secondary receives same frames for logging/comparison only — its errors never propagate. Typically wired automatically via `session.stt_secondary_factory`.
 
 ## Audio Codec
 
 G.711 μ-law at 8kHz — Twilio's native format. 160 bytes = 20ms frame.
 
 ```python
-from projects.voice_runtime.audio import mix_frames
+from voice_runtime.audio import mix_frames
 
 mixed = mix_frames(caller_chunk, agent_chunk)  # mix two 160-byte frames
 ```
@@ -277,11 +355,14 @@ mixed = mix_frames(caller_chunk, agent_chunk)  # mix two 160-byte frames
 | `TWILIO_ACCOUNT_SID` | Twilio credentials (call initiation) | For outbound |
 | `TWILIO_AUTH_TOKEN` | Twilio credentials | For outbound |
 | `TWILIO_PHONE_NUMBER` | Outbound caller ID | For outbound |
-| `ELEVENLABS_API_KEY` | ElevenLabs authentication | Yes |
+| `ELEVENLABS_API_KEY` | ElevenLabs authentication | For ElevenLabs |
 | `ELEVENLABS_VOICE_ID` | TTS voice | No (default: Rachel) |
 | `ELEVENLABS_MODEL` | TTS model | No (default: `eleven_multilingual_v2`) |
-| `STT_MODEL_ID` | STT model | No (default: `scribe_v2_realtime`) |
-| `STT_LANGUAGE_CODE` | STT language | No (default: `fi`) |
+| `STT_MODEL_ID` | ElevenLabs STT model | No (default: `scribe_v2_realtime`) |
+| `STT_LANGUAGE_CODE` | ElevenLabs STT language | No (default: `fi`) |
+| `AZURE_SPEECH_KEY` | Azure Speech SDK authentication | For Azure |
+| `AZURE_SPEECH_REGION` | Azure Speech SDK region | No (default: `westeurope`) |
+| `AZURE_TTS_VOICE` | Azure TTS voice name | No (default: `fi-FI-NooraNeural`) |
 | `VOICE_MONITOR` | Enable AudioMixer monitoring | No (default: off) |
 
 ## Consumer Pattern
@@ -290,7 +371,7 @@ Typical consumer subclasses `VoiceSession` and adds server lifecycle:
 
 ```python
 from dataclasses import dataclass
-from projects.voice_runtime.session import VoiceSession
+from voice_runtime.session import VoiceSession
 
 @dataclass
 class TelcoSession(VoiceSession):
