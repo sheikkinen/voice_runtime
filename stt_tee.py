@@ -54,6 +54,16 @@ class SttTee:
     def on_committed(self, value: Callable[[str], None] | None) -> None:
         self.primary.on_committed = value
 
+    # --- Proxy: on_recognizing (primary only, NC-199) ---
+
+    @property
+    def on_recognizing(self) -> Callable[[str], None] | None:
+        return self.primary.on_recognizing
+
+    @on_recognizing.setter
+    def on_recognizing(self, value: Callable[[str], None] | None) -> None:
+        self.primary.on_recognizing = value
+
     # --- Relay to both ---
 
     def set_speaking(self, speaking: bool) -> None:

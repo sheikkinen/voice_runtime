@@ -54,6 +54,7 @@ class AzurePersistentStt:
         self._recognizer: Any | None = None
         self._feed_task: asyncio.Task[None] | None = None
         self.on_committed: Callable[[str], None] | None = None
+        self.on_recognizing: Callable[[str], None] | None = None
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open push stream, configure recognizer, begin feeding audio."""
@@ -84,6 +85,7 @@ class AzurePersistentStt:
             audio_config=audio_config,
         )
         self._recognizer.recognized.connect(self._on_committed)
+        self._recognizer.recognizing.connect(self._on_recognizing)
 
         self._recognizer.start_continuous_recognition_async().get()
 
@@ -143,3 +145,17 @@ class AzurePersistentStt:
             return
         if self.on_committed:
             self.on_committed(cleaned)
+
+    def _on_recognizing(self, evt: Any) -> None:
+        """Handle interim recognition — fire on_recognizing callback.
+
+        NC-199: Signals that the user is still speaking.
+        """
+        text = evt.result.text
+        if self._speaking:
+            return
+        cleaned = text.strip()
+        if not cleaned:
+            return
+        if self.on_recognizing:
+            self.on_recognizing(cleaned)

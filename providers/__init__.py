@@ -25,6 +25,7 @@ class SttProvider(Protocol):
     """
 
     on_committed: Callable[[str], None] | None
+    on_recognizing: Callable[[str], None] | None
 
     def set_speaking(self, speaking: bool) -> None: ...
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None: ...

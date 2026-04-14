@@ -49,6 +49,7 @@ class PersistentSttSession:
         self._inbound_queue: asyncio.Queue[bytes | None] | None = None
         self._speaking_since: float = 0.0
         self.on_committed: Callable[[str], None] | None = None
+        self.on_recognizing: Callable[[str], None] | None = None
         self._reconnect_attempt: int = 0  # NC-170 Fix 2: backoff counter
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
@@ -89,6 +90,7 @@ class PersistentSttSession:
         self._stt = await client.speech_to_text.realtime.connect(options)
 
         self._stt.on("committed_transcript", self._on_committed)
+        self._stt.on("partial_transcript", self._on_partial)
         self._stt.on("session_time_limit_exceeded", self._on_time_limit)
         for ev in (
             "error", "auth_error", "quota_exceeded", "rate_limited",
@@ -207,6 +209,20 @@ class PersistentSttSession:
             return
         if self.on_committed:
             self.on_committed(cleaned)
+
+    def _on_partial(self, data: dict) -> None:
+        """Handle partial/interim transcript — fire on_recognizing callback.
+
+        NC-199: Signals that the user is still speaking.
+        """
+        text = data.get("text", "")
+        if self._speaking:
+            return
+        cleaned = text.strip()
+        if not cleaned:
+            return
+        if self.on_recognizing:
+            self.on_recognizing(cleaned)
 
     def _on_time_limit(self, data: dict) -> None:
         logger.critical(

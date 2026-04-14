@@ -269,11 +269,12 @@ class TestElevenLabsOnCommitted:
         stt = PersistentSttSession(api_key="test-key")
         assert not hasattr(stt, "next_transcript")
 
-    def test_no_on_partial_method(self):
+    def test_has_on_partial_method_nc199(self):
+        """NC-199: _on_partial re-added for partial_transcript events."""
         from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
         stt = PersistentSttSession(api_key="test-key")
-        assert not hasattr(stt, "_on_partial")
+        assert hasattr(stt, "_on_partial")
 
 
 # ---------------------------------------------------------------------------
