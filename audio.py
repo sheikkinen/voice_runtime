@@ -4,10 +4,15 @@ NC-152: Extracted from outcaller/nodes/audio_mixer.py (228 lines, zero
 project imports). Provides mulaw encode/decode, frame mixing, and the
 AudioMixer class for local audio monitoring.
 
+NC-235: Optional WAV file recording (record_path parameter).
+Shared by outcaller and ninchat_voice (vendored). Additive change —
+record_path=None default preserves existing behavior. Cross-project
+impact disappears post NC-230 extraction.
+
 Architecture:
   tap_caller(chunk) → caller deque ─┐
                                      ├─ mix thread (20ms tick) → ffplay stdin
-  tap_agent(chunk)  → agent deque  ─┘
+  tap_agent(chunk)  → agent deque  ─┘                          → WAV file (opt)
 """
 
 from __future__ import annotations
@@ -15,9 +20,11 @@ from __future__ import annotations
 import collections
 import contextlib
 import logging
+import struct
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +105,23 @@ def mix_frames(caller: bytes, agent: bytes) -> bytes:
     return bytes(out)
 
 
+def _write_wav_header(f, data_size: int) -> None:
+    """Write a WAV header for 8kHz mono mulaw audio.
+
+    WAV mulaw: codec ID 7, 8000 Hz, 1 channel, 8 bits/sample.
+    fmt chunk is 18 bytes (includes cbSize=0 for non-PCM).
+    """
+    fmt_size = 18
+    header_size = 4 + (8 + fmt_size) + (8 + data_size)  # WAVE + fmt chunk + data chunk
+    f.seek(0)
+    # RIFF header
+    f.write(struct.pack("<4sI4s", b"RIFF", header_size, b"WAVE"))
+    # fmt chunk: codec=7(mulaw), channels=1, rate=8000, byterate=8000, blockalign=1, bits=8, cbSize=0
+    f.write(struct.pack("<4sIHHIIHHH", b"fmt ", fmt_size, 7, 1, 8000, 8000, 1, 8, 0))
+    # data chunk header
+    f.write(struct.pack("<4sI", b"data", data_size))
+
+
 class AudioMixer:
     """Real-time mulaw mixer: two input channels → one mixed output.
 
@@ -105,14 +129,20 @@ class AudioMixer:
     Each direction has an independent FIFO. The mix thread pops one frame from
     each deque every 20ms. Empty deque → silence. Overfull deque (agent burst)
     → frames accumulate and drain at 1×; maxlen drops oldest on overflow.
+
+    NC-235: When record_path is set, mixed audio is also written to a WAV file.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, record_path: Path | None = None) -> None:
         self._caller: collections.deque[bytes] = collections.deque(maxlen=MAX_FRAMES)
         self._agent: collections.deque[bytes] = collections.deque(maxlen=MAX_FRAMES)
         self._proc: subprocess.Popen[bytes] | None = None
         self._thread: threading.Thread | None = None
         self._running: bool = False
+        # NC-235: WAV recording
+        self._record_path = record_path
+        self._record_file = None
+        self._record_bytes: int = 0
 
     def start(self) -> None:
         """Start ffplay and the mix drain thread."""
@@ -129,6 +159,13 @@ class AudioMixer:
             stderr=subprocess.DEVNULL,
             bufsize=0,
         )
+        # NC-235: Open recording file
+        if self._record_path:
+            self._record_path.parent.mkdir(parents=True, exist_ok=True)
+            self._record_file = open(self._record_path, "wb")  # noqa: SIM115
+            _write_wav_header(self._record_file, 0)  # placeholder header
+            logger.info("AudioMixer recording to %s", self._record_path)
+
         self._running = True
         self._thread = threading.Thread(target=self._mix_loop, daemon=True)
         self._thread.start()
@@ -190,11 +227,34 @@ class AudioMixer:
                 self._running = False
                 break
 
+            # NC-235: Write to recording file
+            if self._record_file:
+                try:
+                    self._record_file.write(mixed)
+                    self._record_bytes += len(mixed)
+                except OSError:
+                    logger.warning("AudioMixer: recording write failed")
+                    self._record_file = None
+
     def shutdown(self) -> None:
-        """Stop mix thread and ffplay process."""
+        """Stop mix thread, finalize recording, and stop ffplay process."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=2.0)
+
+        # NC-235: Finalize WAV header with actual data size
+        if self._record_file:
+            try:
+                _write_wav_header(self._record_file, self._record_bytes)
+                self._record_file.close()
+                duration_s = self._record_bytes / 8000
+                logger.info(
+                    "AudioMixer recording saved: %s (%.1fs, %d bytes)",
+                    self._record_path, duration_s, self._record_bytes,
+                )
+            except OSError:
+                logger.warning("AudioMixer: failed to finalize recording")
+            self._record_file = None
         if self._proc:
             pid = self._proc.pid
             with contextlib.suppress(OSError):
