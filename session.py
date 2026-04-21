@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 import threading
+import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -172,26 +173,42 @@ class VoiceSession:
     def send_mark_and_wait(self, mark_name: str, timeout: float = 10.0) -> None:
         """Queue a mark and block until transport echoes it back.
 
+        NC-236: `mark_name` is a logical label (e.g. "tts_complete").
+        Concurrent callers with the same label must not resolve each other's
+        waits, so a unique suffix is appended before storing/enqueuing. The
+        public API is unchanged; Twilio treats marks as opaque strings.
+
         Raises:
             TimeoutError: If mark not received within timeout (unless disconnected).
         """
         if self._loop is None:
             return
 
+        # NC-236: disambiguate concurrent waiters sharing the same logical
+        # name. Loop regenerates on any existing-key hit so the guarantee
+        # is deterministic, not probabilistic.
+        while True:
+            unique = f"{mark_name}__{uuid.uuid4().hex[:8]}"
+            if unique not in self._pending_marks:
+                break
+
         event = threading.Event()
-        self._pending_marks[mark_name] = event
+        self._pending_marks[unique] = event
 
         asyncio.run_coroutine_threadsafe(
-            self._mark_queue.put(mark_name), self._loop
+            self._mark_queue.put(unique), self._loop
         )
 
-        if not event.wait(timeout=timeout):
-            self._pending_marks.pop(mark_name, None)
-            if not self.is_disconnected:
-                raise TimeoutError(f"Mark '{mark_name}' not received within {timeout}s")
-
-        if mark_name in self._pending_marks:
-            del self._pending_marks[mark_name]
+        try:
+            if not event.wait(timeout=timeout):
+                if not self.is_disconnected:
+                    raise TimeoutError(
+                        f"Mark '{mark_name}' (unique='{unique}') "
+                        f"not received within {timeout}s"
+                    )
+        finally:
+            # Single deletion path — covers both success and timeout.
+            self._pending_marks.pop(unique, None)
 
     def signal_mark_received(self, mark_name: str) -> None:
         """Called by transport when a mark echo arrives."""

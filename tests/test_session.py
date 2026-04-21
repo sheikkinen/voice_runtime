@@ -138,7 +138,12 @@ class TestMarkSync:
         s.send_mark_and_wait("test_mark")  # must not raise (no loop → silent return)
 
     def test_mark_roundtrip(self):
-        """send_mark_and_wait blocks until signal_mark_received is called."""
+        """send_mark_and_wait blocks until signal_mark_received is called.
+
+        NC-236: the wire-level mark is a unique suffixed string
+        (``tts_complete__<8hex>``), not the logical ``tts_complete`` label.
+        The transport must echo back the exact string it received.
+        """
         from voice_runtime.session import VoiceSession
 
         s = VoiceSession()
@@ -156,12 +161,18 @@ class TestMarkSync:
             send_thread = threading.Thread(target=sender)
             send_thread.start()
             time.sleep(0.1)
-            # consume the mark from queue and echo it back
+            # consume the mark from queue and echo it back verbatim
             mark = asyncio.run_coroutine_threadsafe(
                 s.get_pending_mark(), loop
             ).result(timeout=2)
-            assert mark == "tts_complete"
-            s.signal_mark_received("tts_complete")
+            assert mark.startswith("tts_complete__"), (
+                f"expected unique-suffixed mark, got {mark!r}"
+            )
+            suffix = mark.removeprefix("tts_complete__")
+            assert len(suffix) == 8 and all(
+                c in "0123456789abcdef" for c in suffix
+            ), f"expected 8 hex chars after '__', got {suffix!r}"
+            s.signal_mark_received(mark)
             send_thread.join(timeout=2)
             assert result[0] is True
         finally:
