@@ -120,10 +120,14 @@ class VoiceSession:
     # --- Queue API (thread-safe sync wrappers) ---
 
     _frame_size_warned: bool = False
+    _loop_none_warned: bool = False
 
     def put_inbound(self, data: bytes | None) -> None:
         """Thread-safe enqueue to inbound (called by transport)."""
         if self._loop is None:
+            if not self._loop_none_warned:
+                logger.warning("put_inbound: _loop is None — audio frame dropped")
+                self._loop_none_warned = True
             return
         # NC-170 Fix 4: log non-standard frame sizes (first occurrence only)
         if data is not None and len(data) != FRAME_BYTES and len(data) > 0:
