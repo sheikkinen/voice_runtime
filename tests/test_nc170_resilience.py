@@ -165,7 +165,7 @@ class TestFix2ReconnectBackoff:
 
         stt = PersistentSttSession(api_key="test-key")
         stt._inbound_queue = asyncio.Queue()
-        stt._reconnect_attempt = 5  # simulate previous failures
+        stt._reconnect_attempt = 1  # simulate one previous failure (under NC-258 cap of 3)
 
         connect_called = False
 
@@ -188,7 +188,7 @@ class TestFix2ReconnectBackoff:
 
         stt = PersistentSttSession(api_key="test-key")
         stt._inbound_queue = asyncio.Queue()
-        stt._reconnect_attempt = 10  # high attempt → should cap
+        stt._reconnect_attempt = 2  # attempt 2 of 3 — still under NC-258 cap
 
         async def mock_connect():
             raise ConnectionError("test failure")
@@ -199,8 +199,9 @@ class TestFix2ReconnectBackoff:
             await stt._reconnect_after_error()
 
         delay = mock_sleep.call_args[0][0]
-        # Cap is 30s; with jitter (0.75-1.25): max 37.5
-        assert delay <= 40, f"Delay should be capped near 30s, got {delay}"
+        # Base delay 1s × 2^2 = 4s; with jitter (0.75-1.25): 3-5s
+        # Verify it's using backoff, not the 30s cap
+        assert 2.0 < delay < 6.0, f"Delay should be ~4s at attempt 2, got {delay}"
 
 
 # ---------------------------------------------------------------------------
