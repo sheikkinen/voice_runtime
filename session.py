@@ -98,6 +98,7 @@ class VoiceSession:
     stt: SttProvider | None = field(default=None, repr=False)
     stt_factory: Callable[[], SttProvider] | None = field(default=None, repr=False)
     stt_secondary_factory: Callable[[], SttProvider] | None = field(default=None, repr=False)
+    on_stt_ready: Callable[[SttProvider], None] | None = field(default=None, repr=False)
 
     # --- Loop / lifecycle ---
 

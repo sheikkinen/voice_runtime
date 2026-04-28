@@ -141,6 +141,9 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                         else:
                             session.stt = primary_stt
                     if session.stt is not None:
+                        # NC-260 Gap E: wire callbacks before start
+                        if session.on_stt_ready is not None:
+                            session.on_stt_ready(session.stt)
                         stt_task = asyncio.create_task(
                             session.stt.start(session.inbound), name="stt_start"
                         )
