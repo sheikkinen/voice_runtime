@@ -64,6 +64,16 @@ class SttTee:
     def on_recognizing(self, value: Callable[[str], None] | None) -> None:
         self.primary.on_recognizing = value
 
+    # --- Proxy: on_error (primary only, NC-258 J-3) ---
+
+    @property
+    def on_error(self) -> Callable[[str], None] | None:
+        return self.primary.on_error
+
+    @on_error.setter
+    def on_error(self, value: Callable[[str], None] | None) -> None:
+        self.primary.on_error = value
+
     # --- Relay to both ---
 
     def set_speaking(self, speaking: bool) -> None:

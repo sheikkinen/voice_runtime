@@ -50,6 +50,7 @@ class PersistentSttSession:
         self._speaking_since: float = 0.0
         self.on_committed: Callable[[str], None] | None = None
         self.on_recognizing: Callable[[str], None] | None = None
+        self.on_error: Callable[[str], None] | None = None  # NC-258
         self._reconnect_attempt: int = 0  # NC-170 Fix 2: backoff counter
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
@@ -133,9 +134,24 @@ class PersistentSttSession:
     # NC-170 Fix 2: exponential backoff constants
     _RECONNECT_BASE_DELAY_S = 1.0
     _RECONNECT_MAX_DELAY_S = 30.0
+    _MAX_RECONNECT_ATTEMPTS = 3  # NC-258 J-1: bound dead-air window
 
     async def _reconnect_after_error(self) -> None:
-        """Reconnect Scribe after a fatal error with exponential backoff."""
+        """Reconnect Scribe after a fatal error with exponential backoff.
+
+        NC-258 J-1: Caps at _MAX_RECONNECT_ATTEMPTS, then fires on_error.
+        """
+        if self._reconnect_attempt >= self._MAX_RECONNECT_ATTEMPTS:
+            logger.error(
+                "Scribe reconnect exhausted (%d attempts)",
+                self._reconnect_attempt,
+            )
+            if self.on_error:
+                self.on_error(
+                    f"reconnect_exhausted_after_{self._reconnect_attempt}_attempts",
+                )
+            return
+
         if self._inbound_queue:
             drained = 0
             while not self._inbound_queue.empty():
@@ -230,6 +246,8 @@ class PersistentSttSession:
         )
         if self._loop:
             self._loop.call_soon_threadsafe(self._time_limit_event.set)
+        if self.on_error:  # NC-258 J-6
+            self.on_error("session_time_limit_exceeded")
 
     _FATAL_ERRORS = frozenset({"queue_overflow", "resource_exhausted"})
 
