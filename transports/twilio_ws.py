@@ -55,6 +55,7 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                     break
                 except Exception as e:
                     logger.error("Error sending audio: %s", e)
+                    session.signal_disconnected()  # NC-260 Gap B
                     break
 
         async def send_marks() -> None:
@@ -72,6 +73,7 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                     break
                 except Exception as e:
                     logger.error("Error sending mark: %s", e)
+                    session.signal_disconnected()  # NC-260 Gap B
                     break
 
         async def watch_disconnect() -> None:
