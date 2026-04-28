@@ -184,9 +184,12 @@ class PersistentSttSession:
             self._reconnect_attempt += 1
             logger.error("Scribe reconnect failed (attempt %d): %s", self._reconnect_attempt, exc)
 
+    _MAX_CONSECUTIVE_SEND_FAILURES = 3  # NC-260 Gap C
+
     async def _feed_audio(self, inbound: asyncio.Queue[bytes | None]) -> None:
         """Feed inbound audio to Scribe WebSocket."""
         frame_count = 0
+        consecutive_failures = 0
         try:
             while True:
                 frame = await inbound.get()
@@ -202,8 +205,18 @@ class PersistentSttSession:
                 audio_b64 = base64.b64encode(frame).decode("ascii")
                 try:
                     await self._stt.send({"audio_base_64": audio_b64})
+                    consecutive_failures = 0
                 except Exception:
-                    logger.debug("_feed_audio: send failed, waiting for reconnect")
+                    consecutive_failures += 1
+                    if consecutive_failures >= self._MAX_CONSECUTIVE_SEND_FAILURES:
+                        logger.error(
+                            "_feed_audio: %d consecutive send failures — escalating",
+                            consecutive_failures,
+                        )
+                        if self.on_error:
+                            self.on_error(f"feed_audio_{consecutive_failures}_consecutive_send_failures")
+                        break
+                    logger.debug("_feed_audio: send failed (%d/%d)", consecutive_failures, self._MAX_CONSECUTIVE_SEND_FAILURES)
                     await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             logger.info("_feed_audio: cancelled after %d frames", frame_count)
@@ -249,7 +262,15 @@ class PersistentSttSession:
         if self.on_error:  # NC-258 J-6
             self.on_error("session_time_limit_exceeded")
 
-    _FATAL_ERRORS = frozenset({"queue_overflow", "resource_exhausted"})
+    _FATAL_ERRORS = frozenset({
+        "queue_overflow", "resource_exhausted",
+        "transcriber_error", "chunk_size_exceeded", "server_error",
+    })
+
+    # NC-260 Gap C: non-reconnectable — fire on_error directly, no retry
+    _TERMINAL_ERRORS = frozenset({
+        "auth_error", "quota_exceeded", "rate_limited", "input_error",
+    })
 
     def _on_error(self, data: dict) -> None:
         msg_type = data.get("message_type", "")
@@ -260,3 +281,7 @@ class PersistentSttSession:
                 "STT fatal error (%s) — scheduling reconnect", msg_type,
             )
             asyncio.run_coroutine_threadsafe(self._reconnect_after_error(), self._loop)
+        elif msg_type in self._TERMINAL_ERRORS:
+            logger.error("STT terminal error (%s) — no reconnect", msg_type)
+            if self.on_error:
+                self.on_error(msg_type)
