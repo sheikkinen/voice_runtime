@@ -13,6 +13,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -42,6 +43,7 @@ class ElevenLabsTTS:
         self._api_key = api_key or ELEVENLABS_API_KEY
         self._voice_id = voice_id or ELEVENLABS_VOICE_ID
         self._model_id = model_id or ELEVENLABS_MODEL
+        self.on_error: Callable[[str], None] | None = None  # NC-260 Gap A
 
     def speak(
         self,
@@ -73,21 +75,27 @@ class ElevenLabsTTS:
         t0 = time.time()
         client = ElevenLabs(api_key=self._api_key)
 
-        audio_stream = client.text_to_speech.convert(
-            voice_id=self._voice_id,
-            model_id=self._model_id,
-            text=text,
-            output_format="ulaw_8000",
-        )
+        try:
+            audio_stream = client.text_to_speech.convert(
+                voice_id=self._voice_id,
+                model_id=self._model_id,
+                text=text,
+                output_format="ulaw_8000",
+            )
 
-        for chunk in audio_stream:
-            if not chunk:
-                continue
-            if stop_event and stop_event.is_set():
-                logger.info("Barge-in interrupt")
-                return {"last_spoken": text, "interrupted": True}
-            session.put_outbound_sync(chunk)
-            session.tap_agent(chunk)
+            for chunk in audio_stream:
+                if not chunk:
+                    continue
+                if stop_event and stop_event.is_set():
+                    logger.info("Barge-in interrupt")
+                    return {"last_spoken": text, "interrupted": True}
+                session.put_outbound_sync(chunk)
+                session.tap_agent(chunk)
+        except Exception as exc:
+            logger.error("ElevenLabs TTS failed: %s", exc)
+            if self.on_error:
+                self.on_error(f"elevenlabs_tts_failed: {exc}")
+            return {"last_spoken": text, "error": str(exc)}
 
         logger.info("Spoke: %s (%.2fs)", text[:50], time.time() - t0)
 

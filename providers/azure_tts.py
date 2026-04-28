@@ -10,6 +10,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import azure.cognitiveservices.speech as speechsdk
@@ -40,6 +41,7 @@ class AzureTTS:
         self._subscription_key = subscription_key or os.getenv("AZURE_SPEECH_KEY", "")
         self._region = region or os.getenv("AZURE_SPEECH_REGION", "westeurope")
         self._voice_name = voice_name or os.getenv("AZURE_TTS_VOICE", "fi-FI-NooraNeural")
+        self.on_error: Callable[[str], None] | None = None  # NC-260 Gap A
 
     def speak(
         self,
@@ -98,7 +100,14 @@ class AzureTTS:
             session.tap_agent(audio_data)
 
         synthesizer.synthesizing.connect(on_synthesizing)
-        synthesizer.speak_text_async(text).get()
+
+        try:
+            synthesizer.speak_text_async(text).get()
+        except Exception as exc:
+            logger.error("Azure TTS synthesis failed: %s", exc)
+            if self.on_error:
+                self.on_error(f"azure_synthesis_failed: {exc}")
+            return {"last_spoken": text, "error": str(exc)}
 
         if interrupted:
             logger.info("Barge-in interrupt (Azure)")

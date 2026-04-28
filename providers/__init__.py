@@ -5,15 +5,19 @@ all STT providers. Enforced by type checker (pyright/mypy), not at runtime.
 NC-166: Simplified — routing decisions moved to consumers. Provider fires
 on_committed callback, consumer decides action.
 NC-258: on_error callback for STT death detection and recovery.
+NC-260 Gap A: TtsProvider Protocol for TTS error detection.
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Protocol
+import threading
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from voice_runtime.session import VoiceSession
 
 
 class SttProvider(Protocol):
@@ -34,3 +38,20 @@ class SttProvider(Protocol):
     def set_speaking(self, speaking: bool) -> None: ...
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None: ...
     async def stop(self) -> None: ...
+
+
+class TtsProvider(Protocol):
+    """Structural interface for text-to-speech providers.
+
+    NC-260 Gap A: TTS providers must expose on_error so synthesis failures
+    are reported to the FSM instead of hanging in a speaking_* state.
+    """
+
+    on_error: Callable[[str], None] | None
+
+    def speak(
+        self,
+        text: str,
+        session: VoiceSession,
+        stop_event: threading.Event | None = ...,
+    ) -> dict[str, Any]: ...
