@@ -130,14 +130,40 @@ All STT providers implement this structural protocol (defined in `providers/__in
 
 ```python
 class SttProvider(Protocol):
-    on_committed: Callable[[str], None] | None   # callback for committed transcripts
+    on_committed: Callable[[str], None] | None    # final transcript for utterance
+    on_recognizing: Callable[[str], None] | None  # interim hypothesis (NC-199)
+    on_error: Callable[[str], None] | None        # fatal error after reconnect exhausted (NC-258)
 
     def set_speaking(self, speaking: bool) -> None: ...
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None: ...
     async def stop(self) -> None: ...
 ```
 
-The `on_committed` callback is the primary mechanism for receiving transcriptions. Transport starts/stops the provider; the provider fires `on_committed` for every committed utterance past the echo discard window. The consumer decides routing (queue, dispatch, ignore).
+| Callback | When it fires | Typical consumer action |
+|----------|---------------|------------------------|
+| `on_committed` | Final transcript past echo discard window | Route to LLM / FSM |
+| `on_recognizing` | Interim hypothesis (may change) | Show live transcription UI |
+| `on_error` | Reconnect attempts exhausted (fatal) | Transition FSM to error state |
+
+Transport starts/stops the provider; the consumer decides routing (queue, dispatch, ignore).
+
+## TtsProvider Protocol
+
+All TTS providers implement this structural protocol (NC-260 Gap A):
+
+```python
+class TtsProvider(Protocol):
+    on_error: Callable[[str], None] | None  # synthesis failure (NC-260 Gap A)
+
+    def speak(
+        self,
+        text: str,
+        session: VoiceSession,
+        stop_event: threading.Event | None = ...,
+    ) -> dict[str, Any]: ...
+```
+
+`speak()` returns a dict with keys: `last_spoken` (str), and optionally `call_disconnected` (bool) or `interrupted` (bool). `on_error` fires on synthesis failures so the FSM doesn't hang in a speaking state.
 
 ## VoiceSession
 
@@ -202,6 +228,21 @@ session.stt_secondary_factory = lambda: create_stt(provider="azure")
 # Transport wraps both in SttTee — primary drives on_committed, secondary logs only
 ```
 
+### STT Ready Hook (NC-260 Gap E)
+
+Wire callbacks *after* the transport creates the STT instance but *before* `start()`:
+
+```python
+def wire_callbacks(stt: SttProvider):
+    stt.on_committed = handle_transcript
+    stt.on_recognizing = handle_interim
+    stt.on_error = handle_stt_death
+
+session.on_stt_ready = wire_callbacks
+```
+
+This replaces the old pattern of wiring callbacks before attaching the factory. The transport calls `on_stt_ready(stt)` after construction, guaranteeing callbacks are set before `start()` fires.
+
 ### Lifecycle
 
 | Method | Purpose |
@@ -214,15 +255,21 @@ session.stt_secondary_factory = lambda: create_stt(provider="azure")
 
 ### Audio Monitoring
 
-Optional two-channel mixer for real-time call monitoring (requires `ffplay`):
+Optional two-channel mixer for real-time call monitoring (requires `ffplay`) and WAV recording (NC-235):
 
 ```python
+from pathlib import Path
 from voice_runtime.audio import AudioMixer
 
+# Monitor only (plays mixed audio through ffplay)
 mixer = AudioMixer()
+
+# Monitor + record to WAV file (8kHz mono mulaw)
+mixer = AudioMixer(record_path=Path("recordings/call_001.wav"))
+
 mixer.start()
 session.set_mixer(mixer)
-# session.tap_caller() / session.tap_agent() now feed audio to ffplay
+# session.tap_caller() / session.tap_agent() now feed audio to ffplay + WAV
 ```
 
 ### Exceptions
@@ -364,6 +411,20 @@ mixed = mix_frames(caller_chunk, agent_chunk)  # mix two 160-byte frames
 | `AZURE_SPEECH_REGION` | Azure Speech SDK region | No (default: `westeurope`) |
 | `AZURE_TTS_VOICE` | Azure TTS voice name | No (default: `fi-FI-NooraNeural`) |
 | `VOICE_MONITOR` | Enable AudioMixer monitoring | No (default: off) |
+
+## Transport: SMS (NC-193)
+
+Send SMS via Twilio REST API without importing the Twilio SDK in consumers:
+
+```python
+from voice_runtime.transport import get_sms_transport
+
+sms = get_sms_transport()  # default: twilio
+result = sms.send_sms(to="+358401234567", body="Your appointment is confirmed.")
+# result: {"message_sid": "SM...", "status": "queued", "to": "+358..."}
+```
+
+Requires `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_PHONE_NUMBER` env vars.
 
 ## Consumer Pattern
 
