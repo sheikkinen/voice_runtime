@@ -18,4 +18,8 @@ def create_tts(provider: str = "elevenlabs", **kwargs):
         from voice_runtime.providers.azure_tts import AzureTTS
 
         return AzureTTS(**kwargs)
+    elif provider == "mock":
+        from voice_runtime.mock.tts import MockTts
+
+        return MockTts(**kwargs)
     raise ValueError(f"Unknown TTS provider: {provider}")

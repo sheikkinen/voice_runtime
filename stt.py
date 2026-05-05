@@ -20,6 +20,10 @@ def get_stt_class(provider: str = "elevenlabs"):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
 
         return AzurePersistentStt
+    elif provider == "mock":
+        from voice_runtime.mock.stt import MockStt
+
+        return MockStt
     raise ValueError(f"Unknown STT provider: {provider}")
 
 
@@ -38,4 +42,8 @@ def create_stt(provider: str = "elevenlabs", **kwargs):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
 
         return AzurePersistentStt(**kwargs)
+    elif provider == "mock":
+        from voice_runtime.mock.stt import MockStt
+
+        return MockStt(**kwargs)
     raise ValueError(f"Unknown STT provider: {provider}")
