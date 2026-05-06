@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -56,11 +57,16 @@ class TestMockTtsProtocol:
 class TestMockTtsFunctional:
     """Verify MockTts records speech and returns expected results."""
 
+    def _make_session(self):
+        session = MagicMock()
+        session.send_mark_and_wait = MagicMock()
+        return session
+
     def test_speak_records_text(self):
         from voice_runtime.mock.tts import MockTts
 
         tts = MockTts()
-        session = object()  # MockTts doesn't use session
+        session = self._make_session()
         result = tts.speak("hello", session)
 
         assert tts.spoken == ["hello"]
@@ -71,7 +77,7 @@ class TestMockTtsFunctional:
         from voice_runtime.mock.tts import MockTts
 
         tts = MockTts()
-        session = object()
+        session = self._make_session()
         tts.speak("first", session)
         tts.speak("second", session)
 
@@ -81,7 +87,7 @@ class TestMockTtsFunctional:
         from voice_runtime.mock.tts import MockTts
 
         tts = MockTts()
-        session = object()
+        session = self._make_session()
         stop = threading.Event()
         stop.set()
         result = tts.speak("interrupted", session, stop_event=stop)

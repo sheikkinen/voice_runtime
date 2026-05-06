@@ -46,13 +46,22 @@ class MockStt:
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Start the mock STT consumer loop.
 
-        Waits for injected utterances and fires on_committed.
-        The inbound_queue (raw audio) is ignored — transcripts come
-        from inject() calls.
+        Spawns a background task that waits for injected utterances and
+        fires on_committed. The inbound_queue (raw audio) is ignored —
+        transcripts come from inject() calls.
+
+        Returns immediately (like ElevenLabs/Azure providers) so callers
+        can await start() without blocking.
         """
         self._loop = asyncio.get_running_loop()
         self._running = True
+        self._feed_task = asyncio.create_task(
+            self._consume_loop(), name="mock_stt_consume"
+        )
+        logger.info("MockStt started")
 
+    async def _consume_loop(self) -> None:
+        """Background task: dispatch injected utterances to on_committed."""
         while self._running:
             try:
                 text = await asyncio.wait_for(self._utterances.get(), timeout=0.1)
@@ -60,7 +69,10 @@ class MockStt:
                 continue
             if self.on_committed:
                 self.on_committed(text)
+                logger.debug("MockStt committed: %s", text[:60])
 
     async def stop(self) -> None:
         """Stop the consumer loop."""
         self._running = False
+        if hasattr(self, "_feed_task") and self._feed_task:
+            self._feed_task.cancel()
