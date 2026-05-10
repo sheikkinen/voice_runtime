@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 
 import pytest
-
 from voice_runtime.session import VoiceSession
 
 
@@ -27,9 +26,9 @@ class TestPutInboundLoopWarning:
         with caplog.at_level(logging.WARNING):
             session.put_inbound(b"\x00" * 160)
 
-        assert any("_loop is None" in msg for msg in caplog.messages), (
-            f"Expected warning about _loop being None, got: {caplog.messages}"
-        )
+        assert any(
+            "_loop is None" in msg for msg in caplog.messages
+        ), f"Expected warning about _loop being None, got: {caplog.messages}"
 
     def test_put_inbound_warns_once_not_spam(
         self, caplog: pytest.LogCaptureFixture

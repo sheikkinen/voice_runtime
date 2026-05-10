@@ -225,9 +225,9 @@ class TestFix3EventInitRace:
             s.set_loop(loop)
 
             # Before fix: _disconnect_requested is None here
-            assert s._disconnect_requested is not None, (
-                "_disconnect_requested should be initialized in set_loop()"
-            )
+            assert (
+                s._disconnect_requested is not None
+            ), "_disconnect_requested should be initialized in set_loop()"
             assert isinstance(s._disconnect_requested, asyncio.Event)
         finally:
             loop.close()
@@ -241,9 +241,9 @@ class TestFix3EventInitRace:
             s = VoiceSession()
             s.set_loop(loop)
 
-            assert s._clear_queue is not None, (
-                "_clear_queue should be initialized in set_loop()"
-            )
+            assert (
+                s._clear_queue is not None
+            ), "_clear_queue should be initialized in set_loop()"
             assert isinstance(s._clear_queue, asyncio.Queue)
         finally:
             loop.close()
@@ -259,9 +259,9 @@ class TestFix3EventInitRace:
         # Do NOT call signal_ws_connected — simulate pre-connection
         s.request_disconnect()
         await asyncio.sleep(0)  # let call_soon_threadsafe execute
-        assert s._disconnect_requested.is_set(), (
-            "request_disconnect() should work before WS connect"
-        )
+        assert (
+            s._disconnect_requested.is_set()
+        ), "request_disconnect() should work before WS connect"
 
     def test_signal_ws_connected_still_works(self):
         """signal_ws_connected() should not fail if fields already initialized."""
@@ -339,9 +339,9 @@ class TestFix4FrameSizeLogging:
         s.put_inbound(b"\xff" * 320)
         await asyncio.sleep(0.05)  # let coroutine run
 
-        assert not s.inbound.empty(), (
-            "Frame should be enqueued despite non-standard size"
-        )
+        assert (
+            not s.inbound.empty()
+        ), "Frame should be enqueued despite non-standard size"
 
     def test_empty_frame_no_log(self, caplog):
         """Empty bytes should not produce frame size log (it's a sentinel-adjacent case)."""

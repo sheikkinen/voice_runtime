@@ -6,11 +6,11 @@ NC-166: Protocol simplified to 4 members (on_committed, set_speaking, start, sto
 
 from __future__ import annotations
 
-from tests.conftest import requires_azure
-
 from unittest.mock import MagicMock
 
 from voice_runtime.providers import SttProvider
+
+from tests.conftest import requires_azure
 
 # --- Protocol member catalog (NC-166) ---
 
@@ -37,9 +37,9 @@ class TestSttProviderProtocolExists:
 
     def test_protocol_has_required_attributes(self):
         for attr in REQUIRED_ATTRIBUTES:
-            assert attr in SttProvider.__annotations__, (
-                f"SttProvider missing attribute: {attr}"
-            )
+            assert (
+                attr in SttProvider.__annotations__
+            ), f"SttProvider missing attribute: {attr}"
 
 
 @requires_azure
@@ -51,9 +51,9 @@ class TestAzureSttConformance:
 
         stt = AzurePersistentStt.__new__(AzurePersistentStt)
         for method in REQUIRED_METHODS:
-            assert callable(getattr(stt, method, None)), (
-                f"AzurePersistentStt missing method: {method}"
-            )
+            assert callable(
+                getattr(stt, method, None)
+            ), f"AzurePersistentStt missing method: {method}"
 
     def test_has_all_required_attributes(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
@@ -77,9 +77,9 @@ class TestElevenLabsSttConformance:
 
         stt = PersistentSttSession.__new__(PersistentSttSession)
         for method in REQUIRED_METHODS:
-            assert callable(getattr(stt, method, None)), (
-                f"PersistentSttSession missing method: {method}"
-            )
+            assert callable(
+                getattr(stt, method, None)
+            ), f"PersistentSttSession missing method: {method}"
 
     def test_has_all_required_attributes(self):
         from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
@@ -108,9 +108,9 @@ class TestSttTeeConformance:
     def test_has_all_required_methods(self):
         tee = self._make_tee()
         for method in REQUIRED_METHODS:
-            assert callable(getattr(tee, method, None)), (
-                f"SttTee missing method: {method}"
-            )
+            assert callable(
+                getattr(tee, method, None)
+            ), f"SttTee missing method: {method}"
 
     def test_has_on_committed_property(self):
         tee = self._make_tee()
@@ -127,9 +127,9 @@ class TestSessionFieldTypes:
         hints = VoiceSession.__dataclass_fields__
         stt_field = hints["stt"]
         type_str = str(stt_field.type)
-        assert "Any" not in type_str, (
-            f"session.stt still typed as Any: {stt_field.type}"
-        )
+        assert (
+            "Any" not in type_str
+        ), f"session.stt still typed as Any: {stt_field.type}"
 
     def test_stt_factory_annotation_is_not_any(self):
         from voice_runtime.session import VoiceSession
@@ -137,9 +137,9 @@ class TestSessionFieldTypes:
         hints = VoiceSession.__dataclass_fields__
         factory_field = hints["stt_factory"]
         type_str = str(factory_field.type)
-        assert "Any" not in type_str, (
-            f"session.stt_factory still typed as Any: {factory_field.type}"
-        )
+        assert (
+            "Any" not in type_str
+        ), f"session.stt_factory still typed as Any: {factory_field.type}"
 
     def test_stt_secondary_factory_annotation_is_not_any(self):
         from voice_runtime.session import VoiceSession
@@ -147,6 +147,6 @@ class TestSessionFieldTypes:
         hints = VoiceSession.__dataclass_fields__
         factory_field = hints["stt_secondary_factory"]
         type_str = str(factory_field.type)
-        assert "Any" not in type_str, (
-            f"session.stt_secondary_factory still typed as Any: {factory_field.type}"
-        )
+        assert (
+            "Any" not in type_str
+        ), f"session.stt_secondary_factory still typed as Any: {factory_field.type}"

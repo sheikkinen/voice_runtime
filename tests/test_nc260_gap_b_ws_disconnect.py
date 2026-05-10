@@ -121,9 +121,9 @@ async def test_send_audio_signals_disconnect_on_error():
             "send_audio did not call signal_disconnected() within 2s after send failure"
         )
 
-    assert session.is_disconnected, (
-        "session must be disconnected after send_audio fails"
-    )
+    assert (
+        session.is_disconnected
+    ), "session must be disconnected after send_audio fails"
 
     # Cleanup: unblock the receive loop and cancel handler
     ws._block_event.set()
@@ -160,9 +160,9 @@ async def test_send_marks_signals_disconnect_on_error():
             "send_marks did not call signal_disconnected() within 2s after send failure"
         )
 
-    assert session.is_disconnected, (
-        "session must be disconnected after send_marks fails"
-    )
+    assert (
+        session.is_disconnected
+    ), "session must be disconnected after send_marks fails"
 
     ws._block_event.set()
     task.cancel()

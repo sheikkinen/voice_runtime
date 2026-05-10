@@ -6,11 +6,7 @@ initiate_mock_call, create_text_relay, /test/inject fail-closed gate.
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestMockTtsOnSpoken:

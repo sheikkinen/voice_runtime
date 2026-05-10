@@ -165,13 +165,13 @@ class TestMarkSync:
             mark = asyncio.run_coroutine_threadsafe(s.get_pending_mark(), loop).result(
                 timeout=2
             )
-            assert mark.startswith("tts_complete__"), (
-                f"expected unique-suffixed mark, got {mark!r}"
-            )
+            assert mark.startswith(
+                "tts_complete__"
+            ), f"expected unique-suffixed mark, got {mark!r}"
             suffix = mark.removeprefix("tts_complete__")
-            assert len(suffix) == 8 and all(c in "0123456789abcdef" for c in suffix), (
-                f"expected 8 hex chars after '__', got {suffix!r}"
-            )
+            assert len(suffix) == 8 and all(
+                c in "0123456789abcdef" for c in suffix
+            ), f"expected 8 hex chars after '__', got {suffix!r}"
             s.signal_mark_received(mark)
             send_thread.join(timeout=2)
             assert result[0] is True
@@ -435,9 +435,9 @@ class TestResetMarkSafety:
 
         s.reset()
 
-        assert disconnected_during_unblock, (
-            "reset() did not set pending events — Bug 2 not fixed"
-        )
+        assert (
+            disconnected_during_unblock
+        ), "reset() did not set pending events — Bug 2 not fixed"
         assert disconnected_during_unblock[0] is True, (
             "reset() cleared _disconnected before setting pending events — "
             "stale commands will see is_disconnected=False and proceed with TTS"

@@ -1,0 +1,71 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^voice_runtime/
+      - id: ruff-format
+        files: ^(voice_runtime|tests)/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-ast
+      - id: debug-statements
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: forbid-terms
+        name: forbid TODO / FIXME
+        entry: bash -c '! find voice_runtime -type f -name "*.py" ! -path "*/__pycache__/*" -print0 | xargs -0 grep -nE "TODO|FIXME"'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: file-size-gate
+        name: file size gate (>400 warn, >450 error)
+        entry: bash -c 'fail=0; for f in $(find voice_runtime -type f -name "*.py" ! -path "*/__pycache__/*"); do lines=$(wc -l < "$f"); if [ "$lines" -gt 450 ]; then echo "ERROR $f -- $lines lines (max 450)"; fail=1; elif [ "$lines" -gt 400 ]; then echo "WARN  $f -- $lines lines (target <=400)"; fi; done; exit $fail'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: radon-complexity
+        name: radon CC gate (block grade D, CC >= 21)
+        entry: bash -c 'output=$(python -m radon cc voice_runtime/ -n D -s 2>&1); if [ -n "$output" ]; then echo "$output"; echo "FAIL -- cyclomatic complexity >= 21 detected"; exit 1; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: pytest
+        name: pytest
+        entry: bash -c 'python -m pytest tests/ -q --no-cov 2>&1 | tail -5'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.3.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, chore, docs, refactor, test, ci, perf, style, build, revert]
+
+  - repo: local
+    hooks:
+      - id: block-ai-coauthor
+        name: block AI co-author trailers
+        entry: >-
+          bash -c 'msg=$(cat "$1");
+          if echo "$msg" | grep -qiE "Co-authored-by:.*\b(copilot|github-actions|bot)\b";
+          then echo "ERROR: AI co-author trailer detected"; exit 1; fi' _
+        language: system
+        stages: [commit-msg]
+        always_run: true

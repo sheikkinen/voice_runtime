@@ -11,11 +11,11 @@ Removes: _on_direct_dispatch, _on_direct_transcribed, _direct_sent,
 
 from __future__ import annotations
 
-from tests.conftest import requires_azure
-
 from unittest.mock import MagicMock
 
 from voice_runtime.providers import SttProvider
+
+from tests.conftest import requires_azure
 
 # ---------------------------------------------------------------------------
 # SttProvider Protocol: new shape
@@ -26,9 +26,9 @@ class TestSttProviderProtocolNC166:
     """Protocol should have exactly 4 members after NC-166."""
 
     def test_has_on_committed(self):
-        assert "on_committed" in SttProvider.__annotations__, (
-            "SttProvider missing on_committed attribute"
-        )
+        assert (
+            "on_committed" in SttProvider.__annotations__
+        ), "SttProvider missing on_committed attribute"
 
     def test_has_set_speaking(self):
         assert hasattr(SttProvider, "set_speaking")
@@ -40,14 +40,14 @@ class TestSttProviderProtocolNC166:
         assert hasattr(SttProvider, "stop")
 
     def test_no_arm_barge_in(self):
-        assert not hasattr(SttProvider, "arm_barge_in"), (
-            "arm_barge_in must be removed from Protocol"
-        )
+        assert not hasattr(
+            SttProvider, "arm_barge_in"
+        ), "arm_barge_in must be removed from Protocol"
 
     def test_no_next_transcript(self):
-        assert not hasattr(SttProvider, "next_transcript"), (
-            "next_transcript must be removed from Protocol"
-        )
+        assert not hasattr(
+            SttProvider, "next_transcript"
+        ), "next_transcript must be removed from Protocol"
 
     def test_no_direct_dispatch(self):
         assert "_on_direct_dispatch" not in getattr(
@@ -145,17 +145,17 @@ class TestAzureOnCommitted:
         from voice_runtime.providers.azure_stt import AzurePersistentStt
 
         stt = AzurePersistentStt(subscription_key="test-key")
-        assert not hasattr(stt, "_on_direct_dispatch"), (
-            "_on_direct_dispatch must be removed"
-        )
+        assert not hasattr(
+            stt, "_on_direct_dispatch"
+        ), "_on_direct_dispatch must be removed"
 
     def test_no_direct_transcribed_attribute(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
 
         stt = AzurePersistentStt(subscription_key="test-key")
-        assert not hasattr(stt, "_on_direct_transcribed"), (
-            "_on_direct_transcribed must be removed"
-        )
+        assert not hasattr(
+            stt, "_on_direct_transcribed"
+        ), "_on_direct_transcribed must be removed"
 
     def test_no_direct_sent_attribute(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
@@ -185,9 +185,9 @@ class TestAzureOnCommitted:
         from voice_runtime.providers.azure_stt import AzurePersistentStt
 
         stt = AzurePersistentStt(subscription_key="test-key")
-        assert not hasattr(stt, "_transcript_queue"), (
-            "_transcript_queue must be removed"
-        )
+        assert not hasattr(
+            stt, "_transcript_queue"
+        ), "_transcript_queue must be removed"
 
     def test_no_on_partial_method(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
@@ -349,9 +349,9 @@ class TestPerTurnSttDeleted:
     def test_no_azure_per_turn_stt(self):
         from voice_runtime.providers import azure_stt
 
-        assert not hasattr(azure_stt, "AzurePerTurnStt"), (
-            "AzurePerTurnStt must be deleted"
-        )
+        assert not hasattr(
+            azure_stt, "AzurePerTurnStt"
+        ), "AzurePerTurnStt must be deleted"
 
     def test_no_elevenlabs_per_turn_stt(self):
         from voice_runtime.providers import elevenlabs_stt

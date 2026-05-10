@@ -6,11 +6,9 @@ immediately when STT is created, not deferred until first _on_speak().
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import MagicMock
 
 import pytest
-
 from voice_runtime.session import VoiceSession
 
 

@@ -16,7 +16,6 @@ import threading
 import time
 
 import pytest
-
 from voice_runtime.session import VoiceSession
 
 

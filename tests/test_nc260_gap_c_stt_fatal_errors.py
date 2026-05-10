@@ -12,7 +12,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
 
@@ -52,16 +51,15 @@ class TestFatalErrorsExpansion:
                 session._on_error({"message_type": error_type})
 
         # Should have scheduled reconnect
-        from asyncio import run_coroutine_threadsafe  # noqa: F811
 
         assert mock_reconnect.called or error_type in session._FATAL_ERRORS
 
     @pytest.mark.parametrize("error_type", RECONNECTABLE_ERRORS)
     def test_reconnectable_error_in_fatal_set(self, error_type: str) -> None:
         """All reconnectable errors must be in _FATAL_ERRORS."""
-        assert error_type in PersistentSttSession._FATAL_ERRORS, (
-            f"{error_type} not in _FATAL_ERRORS"
-        )
+        assert (
+            error_type in PersistentSttSession._FATAL_ERRORS
+        ), f"{error_type} not in _FATAL_ERRORS"
 
     @pytest.mark.parametrize("error_type", NON_RECONNECTABLE_ERRORS)
     def test_non_reconnectable_error_fires_on_error(self, error_type: str) -> None:

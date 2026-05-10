@@ -61,8 +61,8 @@ The current FR leaves this as a documentation concern. Treat it as a code gate.
 
 ## Scope confirmed
 
-**In:** Signature validation on `/voice` WebSocket endpoint, bypass var with warning, two unit tests  
-**Out:** TwiML HTTP endpoint validation, rate limiting, mTLS  
+**In:** Signature validation on `/voice` WebSocket endpoint, bypass var with warning, two unit tests
+**Out:** TwiML HTTP endpoint validation, rate limiting, mTLS
 
 ---
 

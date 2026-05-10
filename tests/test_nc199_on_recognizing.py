@@ -6,12 +6,11 @@ SttTee proxies on_recognizing to primary only.
 
 from __future__ import annotations
 
-from tests.conftest import requires_azure
-
 from unittest.mock import MagicMock
 
 import pytest
 
+from tests.conftest import requires_azure
 
 # ---------------------------------------------------------------------------
 # SttProvider Protocol: on_recognizing attribute
@@ -25,9 +24,9 @@ class TestSttProviderOnRecognizing:
     def test_protocol_has_on_recognizing(self):
         from voice_runtime.providers import SttProvider
 
-        assert "on_recognizing" in SttProvider.__annotations__, (
-            "SttProvider missing on_recognizing attribute"
-        )
+        assert (
+            "on_recognizing" in SttProvider.__annotations__
+        ), "SttProvider missing on_recognizing attribute"
 
 
 # ---------------------------------------------------------------------------

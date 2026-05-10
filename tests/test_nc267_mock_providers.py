@@ -11,8 +11,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from voice_runtime.providers import SttProvider, TtsProvider
-
 # --- Protocol catalogs ---
 
 STT_REQUIRED_METHODS = ["set_speaking", "start", "stop"]
@@ -33,9 +31,9 @@ class TestMockTtsProtocol:
 
         tts = MockTts()
         for method in TTS_REQUIRED_METHODS:
-            assert callable(getattr(tts, method, None)), (
-                f"MockTts missing method: {method}"
-            )
+            assert callable(
+                getattr(tts, method, None)
+            ), f"MockTts missing method: {method}"
 
     def test_has_all_required_attributes(self):
         from voice_runtime.mock.tts import MockTts
@@ -119,9 +117,9 @@ class TestMockSttProtocol:
 
         stt = MockStt()
         for method in STT_REQUIRED_METHODS:
-            assert callable(getattr(stt, method, None)), (
-                f"MockStt missing method: {method}"
-            )
+            assert callable(
+                getattr(stt, method, None)
+            ), f"MockStt missing method: {method}"
 
     def test_has_all_required_attributes(self):
         from voice_runtime.mock.stt import MockStt

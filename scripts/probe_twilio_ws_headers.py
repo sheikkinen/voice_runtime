@@ -17,7 +17,6 @@ Result saved to /tmp/twilio_ws_headers.json
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -147,7 +146,7 @@ def main() -> None:
         sys.exit(1)
 
     # Analyse result
-    sig = captured_headers.get("x-twilio-signature", None)
+    sig = captured_headers.get("x-twilio-signature")
 
     print("\n" + "=" * 60)
     print("TWILIO WEBSOCKET UPGRADE HEADER PROBE RESULT")
@@ -159,7 +158,7 @@ def main() -> None:
 
     print()
     if sig:
-        print(f"✅ RESULT: X-Twilio-Signature IS PRESENT")
+        print("✅ RESULT: X-Twilio-Signature IS PRESENT")
         print(f"   Value:  {sig}")
         print("\n→ NC-283 Amendment 1: RESOLVED — signature validation is viable")
         print("→ Use this value as test fixture in NC-283 unit tests")

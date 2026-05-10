@@ -7,13 +7,10 @@ in a speaking_* state.
 
 from __future__ import annotations
 
-from tests.conftest import requires_azure
-
 import asyncio
-import threading
 from unittest.mock import MagicMock, patch
 
-import pytest
+from tests.conftest import requires_azure
 
 
 def _make_session():
@@ -74,9 +71,9 @@ class TestAzureTtsOnError:
 
             result = tts.speak("test text", session)
 
-        assert len(errors_received) == 1, (
-            f"on_error should fire once, got {len(errors_received)} calls"
-        )
+        assert (
+            len(errors_received) == 1
+        ), f"on_error should fire once, got {len(errors_received)} calls"
         assert (
             "synthesis" in errors_received[0].lower()
             or "azure" in errors_received[0].lower()
@@ -113,9 +110,9 @@ class TestElevenLabsTtsOnError:
 
             result = tts.speak("test text", session)
 
-        assert len(errors_received) == 1, (
-            f"on_error should fire once, got {len(errors_received)} calls"
-        )
+        assert (
+            len(errors_received) == 1
+        ), f"on_error should fire once, got {len(errors_received)} calls"
         loop.close()
 
     def test_elevenlabs_tts_fires_on_error_on_stream_failure(self):
@@ -139,7 +136,7 @@ class TestElevenLabsTtsOnError:
 
             result = tts.speak("test text", session)
 
-        assert len(errors_received) == 1, (
-            f"on_error should fire on stream failure, got {len(errors_received)}"
-        )
+        assert (
+            len(errors_received) == 1
+        ), f"on_error should fire on stream failure, got {len(errors_received)}"
         loop.close()

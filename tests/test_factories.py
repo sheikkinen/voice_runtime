@@ -7,9 +7,9 @@ NC-152 Phase 2.
 
 from __future__ import annotations
 
-from tests.conftest import requires_azure
-
 import pytest
+
+from tests.conftest import requires_azure
 
 
 class TestCreateTts:
