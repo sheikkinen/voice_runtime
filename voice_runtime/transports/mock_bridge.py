@@ -105,7 +105,7 @@ class FakeWsBridge:
                 while self._running:
                     try:
                         msg = await asyncio.wait_for(ws.recv(), timeout=0.5)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         continue
                     except websockets.ConnectionClosed as e:
                         logger.info(

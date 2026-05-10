@@ -65,7 +65,7 @@ class MockStt:
         while self._running:
             try:
                 text = await asyncio.wait_for(self._utterances.get(), timeout=0.1)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             if self.on_committed:
                 self.on_committed(text)
