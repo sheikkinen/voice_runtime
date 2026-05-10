@@ -70,3 +70,38 @@ Saved to /tmp/twilio_ws_headers.json
 - Reuse ngrok startup pattern from `start-symptom-answerer.sh` (subprocess + admin API poll)
 - Call own number so call completes TwiML quickly and WS upgrade follows immediately
 - Single-use: run once, read the result, delete or archive the script
+
+---
+
+## Result (2026-05-10)
+
+**Status:** DONE — probe executed, result confirmed.
+
+### Twilio WebSocket Upgrade Headers (captured live)
+
+```
+host: capacitive-bernetta-transitorily.ngrok-free.dev
+user-agent: Twilio.TmeWs/1.0
+connection: Upgrade
+sec-websocket-key: luxFfW4ekMivF8y4ajVwzw==
+sec-websocket-version: 13
+upgrade: websocket
+x-forwarded-for: 3.83.109.252
+x-forwarded-host: capacitive-bernetta-transitorily.ngrok-free.dev
+x-forwarded-proto: https
+x-twilio-signature: Oh4FvfCToOYm1cbtN5bfEsSoYxU=   ← PRESENT
+accept-encoding: gzip
+```
+
+### ✅ X-Twilio-Signature IS PRESENT
+
+Twilio sends `X-Twilio-Signature` on the HTTP upgrade request for Media Streams WebSocket
+connections. The signature covers the `wss://` URL of the stream endpoint.
+
+**Impact on NC-283:**
+- Amendment 1: RESOLVED — signature validation is viable on WebSocket upgrade
+- Use `Twilio.TmeWs/1.0` as `user-agent` in unit test fixtures for realistic mocking
+- The example signature `Oh4FvfCToOYm1cbtN5bfEsSoYxU=` is URL+key specific; generate
+  a valid test fixture using `RequestValidator(test_token).compute_signature(url, {})`
+
+**NC-283 can proceed to enforcement.**
