@@ -1,9 +1,10 @@
 """RED phase tests for voice_runtime.transports.twilio_ws.
 
 Tests the Twilio Media Streams WebSocket handler: event dispatch,
-audio routing, mark sync, lifecycle signals.
+audio routing, mark sync, lifecycle signals, and Twilio signature validation.
 
 NC-152 Phase 2, Step 3.
+NC-283: Twilio request signature validation.
 """
 
 from __future__ import annotations
@@ -11,10 +12,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+from twilio.request_validator import RequestValidator
 
 
 def _make_session():
@@ -157,3 +162,106 @@ class TestTwilioTransportProtocol:
                 ws.send_text(json.dumps({"event": "stop"}))
 
         session.tap_caller.assert_called_once_with(audio_data)
+
+
+# ---------------------------------------------------------------------------
+# NC-283: Twilio signature validation
+# ---------------------------------------------------------------------------
+
+_TEST_TOKEN = "test_auth_token_nc283"
+_TEST_STREAM_URL = "https://example.ngrok.io"
+_TEST_WS_URL = "wss://example.ngrok.io/voice"
+
+
+def _valid_signature(url: str = _TEST_WS_URL, token: str = _TEST_TOKEN) -> str:
+    """Compute a valid X-Twilio-Signature for the given URL and token."""
+    return RequestValidator(token).compute_signature(url, {})
+
+
+@pytest.mark.req("NC-283")
+class TestSignatureValidation:
+    """NC-283: Twilio signature validation on WebSocket upgrade."""
+
+    def test_invalid_signature_closes_with_1008(self, monkeypatch):
+        monkeypatch.setenv("TWILIO_AUTH_TOKEN", _TEST_TOKEN)
+        monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
+        monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
+
+        from voice_runtime.transports import twilio_ws
+        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
+
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
+        app = FastAPI()
+        session = _make_session()
+        register_voice_websocket(app, session)
+
+        with TestClient(app) as client:
+            with client.websocket_connect(
+                "/voice",
+                headers={"X-Twilio-Signature": "invalid_signature"},
+            ) as ws:
+                with pytest.raises(WebSocketDisconnect) as exc_info:
+                    ws.receive_text()
+            assert exc_info.value.code == 1008
+
+    def test_valid_signature_is_accepted(self, monkeypatch):
+        monkeypatch.setenv("TWILIO_AUTH_TOKEN", _TEST_TOKEN)
+        monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
+        monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
+
+        from voice_runtime.transports import twilio_ws
+        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
+
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
+        app = FastAPI()
+        session = _make_session()
+        register_voice_websocket(app, session)
+
+        sig = _valid_signature()
+        with TestClient(app) as client:
+            with client.websocket_connect(
+                "/voice",
+                headers={"X-Twilio-Signature": sig},
+            ) as ws:
+                ws.send_text(json.dumps({"event": "stop"}))
+
+        session.signal_disconnected.assert_called()
+
+    def test_missing_auth_token_skips_validation(self, monkeypatch):
+        """When TWILIO_AUTH_TOKEN is not set, validation is bypassed with a warning."""
+        monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
+        monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
+        monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
+
+        from voice_runtime.transports import twilio_ws
+        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
+
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
+        app = FastAPI()
+        session = _make_session()
+        register_voice_websocket(app, session)
+
+        with TestClient(app) as client:
+            with client.websocket_connect("/voice") as ws:
+                ws.send_text(json.dumps({"event": "stop"}))
+
+        session.signal_disconnected.assert_called()
+
+    def test_skip_validation_env_bypasses_check(self, monkeypatch):
+        """TWILIO_SKIP_SIGNATURE_VALIDATION=1 allows connection with no signature."""
+        monkeypatch.setenv("TWILIO_AUTH_TOKEN", _TEST_TOKEN)
+        monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
+
+        from voice_runtime.transports import twilio_ws
+        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", True)
+
+        from voice_runtime.transports.twilio_ws import register_voice_websocket
+        app = FastAPI()
+        session = _make_session()
+        register_voice_websocket(app, session)
+
+        with TestClient(app) as client:
+            with client.websocket_connect("/voice") as ws:
+                ws.send_text(json.dumps({"event": "stop"}))
+
+        session.signal_disconnected.assert_called()

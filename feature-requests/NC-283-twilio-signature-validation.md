@@ -1,6 +1,6 @@
 # NC-283: Twilio Request Signature Validation on WebSocket Endpoint
 
-**Status:** Approved (see NC-283-twilio-signature-validation.judgement.md)
+**Status:** Implemented — 2026-05-10
 **Effort:** 0.5 day
 **Requested:** 2026-05-10
 

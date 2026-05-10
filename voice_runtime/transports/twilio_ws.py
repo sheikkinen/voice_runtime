@@ -8,6 +8,8 @@ The /voice WebSocket endpoint implements the Twilio Media Streams protocol:
 - Sends base64-encoded mulaw audio frames back to Twilio
 - Sends mark events for TTS synchronization
 - Taps caller audio to session monitoring (optional)
+
+NC-283: Validates X-Twilio-Signature on every WebSocket upgrade.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ import base64
 import contextlib
 import json
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -25,6 +28,49 @@ if TYPE_CHECKING:
     from voice_runtime.session import VoiceSession
 
 logger = logging.getLogger(__name__)
+
+_SKIP_VALIDATION: bool = os.getenv(
+    "TWILIO_SKIP_SIGNATURE_VALIDATION", ""
+).lower() in ("1", "true", "yes")
+
+if _SKIP_VALIDATION:
+    logger.warning(
+        "TWILIO_SKIP_SIGNATURE_VALIDATION is set — "
+        "Twilio signature validation DISABLED. NEVER set in production."
+    )
+
+
+def _validate_twilio_signature(websocket: WebSocket) -> bool:
+    """Validate X-Twilio-Signature on the WebSocket upgrade request.
+
+    Returns True if validation passes, False if rejected.
+    Bypassed (returns True) when:
+    - _SKIP_VALIDATION is True (TWILIO_SKIP_SIGNATURE_VALIDATION env var)
+    - TWILIO_AUTH_TOKEN is not set (logs a warning)
+    """
+    if _SKIP_VALIDATION:
+        return True
+
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    if not auth_token:
+        logger.warning(
+            "TWILIO_AUTH_TOKEN not set — Twilio signature validation disabled"
+        )
+        return True
+
+    stream_url = os.getenv("VOICE_STREAM_URL", "")
+    ws_url = (
+        stream_url
+        .replace("https://", "wss://")
+        .replace("http://", "ws://")
+    )
+    full_url = f"{ws_url}/voice"
+
+    signature = websocket.headers.get("x-twilio-signature", "")
+
+    from twilio.request_validator import RequestValidator
+    validator = RequestValidator(auth_token)
+    return validator.validate(full_url, {}, signature)
 
 
 def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
@@ -39,6 +85,15 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
     async def websocket_endpoint(websocket: WebSocket) -> None:
         """Handle Twilio Media Streams WebSocket connection."""
         await websocket.accept()
+
+        if not _validate_twilio_signature(websocket):
+            logger.warning(
+                "Rejected WebSocket: invalid X-Twilio-Signature from %s",
+                websocket.headers.get("x-forwarded-for", "unknown"),
+            )
+            await websocket.close(code=1008)
+            return
+
         logger.info("WebSocket connection accepted")
 
         async def send_audio() -> None:
