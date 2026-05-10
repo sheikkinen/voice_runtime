@@ -158,7 +158,7 @@ class AudioMixer:
             "-fflags", "nobuffer",
             "-f", "mulaw", "-ar", "8000", "-",
         ]
-        self._proc = subprocess.Popen(
+        self._proc = subprocess.Popen(  # noqa: S603
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,

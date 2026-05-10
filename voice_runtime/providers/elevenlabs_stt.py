@@ -168,7 +168,7 @@ class PersistentSttSession:
             self._RECONNECT_BASE_DELAY_S * (2 ** self._reconnect_attempt),
             self._RECONNECT_MAX_DELAY_S,
         )
-        delay *= 0.75 + random.random() * 0.5  # jitter ±25%
+        delay *= 0.75 + random.random() * 0.5  # noqa: S311 jitter ±25%, not cryptographic
 
         logger.info(
             "Reconnecting Scribe in %.1fs (attempt %d)...",

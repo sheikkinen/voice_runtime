@@ -190,7 +190,7 @@ class AzurePersistentStt:
             self._RECONNECT_BASE_DELAY_S * (2 ** self._reconnect_attempt),
             self._RECONNECT_MAX_DELAY_S,
         )
-        delay *= 0.75 + random.random() * 0.5  # jitter ±25%
+        delay *= 0.75 + random.random() * 0.5  # noqa: S311 jitter ±25%, not cryptographic
         logger.info(
             "Reconnecting Azure STT in %.1fs (attempt %d/%d)...",
             delay, self._reconnect_attempt + 1, self._MAX_RECONNECT_ATTEMPTS,

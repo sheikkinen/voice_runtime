@@ -130,13 +130,12 @@ class VoiceSession:
                 self._loop_none_warned = True
             return
         # NC-170 Fix 4: log non-standard frame sizes (first occurrence only)
-        if data is not None and len(data) != FRAME_BYTES and len(data) > 0:
-            if not self._frame_size_warned:
-                logger.debug(
-                    "put_inbound: non-standard frame size %d (expected %d)",
-                    len(data), FRAME_BYTES,
-                )
-                self._frame_size_warned = True
+        if data is not None and len(data) != FRAME_BYTES and len(data) > 0 and not self._frame_size_warned:
+            logger.debug(
+                "put_inbound: non-standard frame size %d (expected %d)",
+                len(data), FRAME_BYTES,
+            )
+            self._frame_size_warned = True
         asyncio.run_coroutine_threadsafe(self.inbound.put(data), self._loop)
 
     def put_outbound_sync(self, data: bytes) -> None:
@@ -205,12 +204,11 @@ class VoiceSession:
         )
 
         try:
-            if not event.wait(timeout=timeout):
-                if not self.is_disconnected:
-                    raise TimeoutError(
-                        f"Mark '{mark_name}' (unique='{unique}') "
-                        f"not received within {timeout}s"
-                    )
+            if not event.wait(timeout=timeout) and not self.is_disconnected:
+                raise TimeoutError(
+                    f"Mark '{mark_name}' (unique='{unique}') "
+                    f"not received within {timeout}s"
+                )
         finally:
             # Single deletion path — covers both success and timeout.
             self._pending_marks.pop(unique, None)
