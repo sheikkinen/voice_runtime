@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 STT_MODEL_ID = os.getenv("STT_MODEL_ID", "scribe_v2_realtime")
-STT_LANGUAGE_CODE = os.getenv("STT_LANGUAGE_CODE", "fi")
+STT_LANGUAGE_CODE = os.getenv("STT_LANGUAGE_CODE", "en")
 ECHO_DISCARD_WINDOW_S = 0.4
 
 

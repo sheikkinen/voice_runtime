@@ -146,6 +146,12 @@ class AudioMixer:
 
     def start(self) -> None:
         """Start ffplay and the mix drain thread."""
+        import shutil
+        if not shutil.which("ffplay"):
+            raise RuntimeError(
+                "ffplay not found — install ffmpeg to use AudioMixer: "
+                "https://ffmpeg.org/download.html"
+            )
         cmd = [
             "ffplay", "-nodisp",
             "-probesize", "32",

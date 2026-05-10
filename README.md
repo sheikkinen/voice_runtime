@@ -451,8 +451,7 @@ Tool nodes then use the session for audio I/O, mark sync, and transport intents 
 
 ### Known Consumers
 
-- **[ninchat_voice](../ninchat_voice/)** — FSM-based Ninchat chatbot voice coordinator. Uses `TelcoSession` in `services/telephony.py` as a consumer wrapper. Multi-call session reuse with per-call reset.
-- **[outcaller](../outcaller/)** — YAMLGraph-orchestrated outbound/inbound voice caller. Uses `TelcoSession` in `nodes/coordinator.py`.
+Any project that subclasses `VoiceSession` and registers a FastAPI WebSocket handler via `register_voice_websocket` is a consumer. See the Consumer Pattern section above for the canonical implementation.
 
 ## Multi-Call Session Reuse
 

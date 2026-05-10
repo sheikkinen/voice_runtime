@@ -11,6 +11,10 @@ from __future__ import annotations
 import threading
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from tests.conftest import requires_azure
+
 
 def _make_session(disconnected: bool = False):
     """Create a mock VoiceSession with working queue methods."""
@@ -22,6 +26,7 @@ def _make_session(disconnected: bool = False):
     return session
 
 
+@requires_azure
 class TestAzureTTSInit:
     def test_defaults(self):
         from voice_runtime.providers.azure_tts import AzureTTS
@@ -49,6 +54,7 @@ class TestAzureTTSInit:
         assert tts._subscription_key == "env-key"
 
 
+@requires_azure
 class TestAzureTTSSpeak:
     def test_empty_text_returns_empty(self):
         from voice_runtime.providers.azure_tts import AzureTTS
