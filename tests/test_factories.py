@@ -7,6 +7,8 @@ NC-152 Phase 2.
 
 from __future__ import annotations
 
+from tests.conftest import requires_azure
+
 import pytest
 
 
@@ -24,6 +26,7 @@ class TestCreateTts:
         tts = create_tts(provider="elevenlabs")
         assert type(tts).__name__ == "ElevenLabsTTS"
 
+    @requires_azure
     def test_azure_provider(self):
         from voice_runtime.tts import create_tts
 
@@ -50,6 +53,7 @@ class TestCreateStt:
         stt = create_stt(provider="elevenlabs")
         assert type(stt).__name__ == "PersistentSttSession"
 
+    @requires_azure
     def test_azure_provider(self):
         from voice_runtime.stt import create_stt
 
@@ -63,15 +67,15 @@ class TestCreateStt:
             create_stt(provider="nonexistent")
 
 
-class TestCreateTransport:
+class TestGetSmsTransport:
     def test_default_is_twilio(self):
-        from voice_runtime.transport import create_transport
+        from voice_runtime.transport import get_sms_transport
 
-        transport = create_transport()
+        transport = get_sms_transport()
         assert transport is not None
 
     def test_unknown_transport_raises(self):
-        from voice_runtime.transport import create_transport
+        from voice_runtime.transport import get_sms_transport
 
-        with pytest.raises(ValueError, match="Unknown transport"):
-            create_transport(provider="nonexistent")
+        with pytest.raises(ValueError, match="Unknown SMS transport"):
+            get_sms_transport(provider="nonexistent")

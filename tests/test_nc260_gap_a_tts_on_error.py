@@ -7,6 +7,8 @@ in a speaking_* state.
 
 from __future__ import annotations
 
+from tests.conftest import requires_azure
+
 import asyncio
 import threading
 from unittest.mock import MagicMock, patch
@@ -37,6 +39,7 @@ class TestTtsProviderProtocol:
         assert "speak" in dir(TtsProvider)
 
 
+@requires_azure
 class TestAzureTtsOnError:
     """Azure TTS must fire on_error on synthesis failure."""
 

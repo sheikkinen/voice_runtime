@@ -42,5 +42,7 @@ class MockTts:
                 self.on_spoken(text)
             except Exception:
                 logger.exception("on_spoken callback failed")
-        session.send_mark_and_wait("tts_complete", timeout=10.0)
+        # Skip mark wait when no event loop is wired (pure unit test context)
+        if session._loop is not None:
+            session.send_mark_and_wait("tts_complete", timeout=10.0)
         return {"last_spoken": text, "interrupted": interrupted}

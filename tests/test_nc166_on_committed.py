@@ -11,6 +11,8 @@ Removes: _on_direct_dispatch, _on_direct_transcribed, _direct_sent,
 
 from __future__ import annotations
 
+from tests.conftest import requires_azure
+
 from unittest.mock import MagicMock
 
 from voice_runtime.providers import SttProvider
@@ -63,6 +65,7 @@ class TestSttProviderProtocolNC166:
 # ---------------------------------------------------------------------------
 
 
+@requires_azure
 class TestAzureOnCommitted:
     """AzurePersistentStt fires on_committed for valid text."""
 
@@ -351,6 +354,7 @@ class TestSttTeeOnCommitted:
 # ---------------------------------------------------------------------------
 
 
+@requires_azure
 class TestPerTurnSttDeleted:
     """AzurePerTurnStt and PerTurnStt must not exist."""
 

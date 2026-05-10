@@ -18,10 +18,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.conftest import requires_azure
+
 # ---------------------------------------------------------------------------
 # AzurePersistentStt
 # ---------------------------------------------------------------------------
 
+@requires_azure
 class TestAzurePersistentSttInit:
     def test_defaults(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
@@ -52,6 +55,7 @@ class TestAzurePersistentSttInit:
         assert stt._subscription_key == "env-key"
 
 
+@requires_azure
 class TestAzurePersistentSttStart:
     @pytest.mark.asyncio
     async def test_start_creates_push_stream_and_recognizer(self):
@@ -91,6 +95,7 @@ class TestAzurePersistentSttStart:
             await stt.stop()
 
 
+@requires_azure
 class TestAzurePersistentSttStop:
     @pytest.mark.asyncio
     async def test_stop_cancels_feed_and_stops_recognizer(self):
@@ -118,6 +123,7 @@ class TestAzurePersistentSttStop:
             mock_recognizer.stop_continuous_recognition_async.assert_called_once()
 
 
+@requires_azure
 class TestAzurePersistentSttTranscripts:
     def test_committed_transcript_fires_on_committed(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
@@ -149,6 +155,7 @@ class TestAzurePersistentSttTranscripts:
         stt._on_committed(mock_evt)  # must not raise
 
 
+@requires_azure
 class TestAzurePersistentSttEchoDiscard:
     @pytest.mark.asyncio
     async def test_set_speaking_false_sets_echo_discard_window(self):
@@ -194,6 +201,7 @@ class TestAzurePersistentSttEchoDiscard:
         assert received == []
 
 
+@requires_azure
 class TestAzurePersistentSttFeedAudio:
     @pytest.mark.asyncio
     async def test_feed_writes_to_push_stream(self):

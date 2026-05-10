@@ -6,6 +6,8 @@ SttTee proxies on_recognizing to primary only.
 
 from __future__ import annotations
 
+from tests.conftest import requires_azure
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -34,6 +36,7 @@ class TestSttProviderOnRecognizing:
 
 
 @pytest.mark.req("NC-199")
+@requires_azure
 class TestAzureOnRecognizing:
     """Azure fires on_recognizing for recognizing events."""
 

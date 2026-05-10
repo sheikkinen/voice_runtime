@@ -22,7 +22,7 @@ def _get_twilio_env() -> tuple[str, str, str, str]:
         os.getenv("TWILIO_ACCOUNT_SID", ""),
         os.getenv("TWILIO_AUTH_TOKEN", ""),
         os.getenv("TWILIO_PHONE_NUMBER", ""),
-        os.getenv("VOICE_STREAM_URL", "") or os.getenv("NGROK_URL", ""),
+        os.getenv("VOICE_STREAM_URL", ""),
     )
 
 
