@@ -102,7 +102,8 @@ class SttTee:
 
         # Fan-out task: read from inbound, put to both queues
         self._fanout_task = asyncio.create_task(
-            self._fanout(inbound_queue), name="stt_tee_fanout",
+            self._fanout(inbound_queue),
+            name="stt_tee_fanout",
         )
 
     async def _fanout(self, source: asyncio.Queue[bytes | None]) -> None:
@@ -141,5 +142,8 @@ class SttTee:
         with contextlib.suppress(Exception):
             await self.secondary.stop()
         if self._secondary_drops:
-            logger.info("SttTee stopped: %d secondary frames dropped total", self._secondary_drops)
+            logger.info(
+                "SttTee stopped: %d secondary frames dropped total",
+                self._secondary_drops,
+            )
         self._secondary_drops = 0

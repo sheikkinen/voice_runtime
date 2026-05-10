@@ -40,7 +40,9 @@ class AzureTTS:
     ) -> None:
         self._subscription_key = subscription_key or os.getenv("AZURE_SPEECH_KEY", "")
         self._region = region or os.getenv("AZURE_SPEECH_REGION", "westeurope")
-        self._voice_name = voice_name or os.getenv("AZURE_TTS_VOICE", "fi-FI-NooraNeural")
+        self._voice_name = voice_name or os.getenv(
+            "AZURE_TTS_VOICE", "fi-FI-NooraNeural"
+        )
         self.on_error: Callable[[str], None] | None = None  # NC-260 Gap A
 
     def speak(

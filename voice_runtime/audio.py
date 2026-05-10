@@ -28,11 +28,11 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-FRAME_BYTES: int = 160          # 20ms @ 8kHz, 1 byte/sample (mulaw)
-FRAME_INTERVAL: float = 0.020   # 20ms
-MAX_FRAMES: int = 400           # 8 seconds at 20ms/frame
+FRAME_BYTES: int = 160  # 20ms @ 8kHz, 1 byte/sample (mulaw)
+FRAME_INTERVAL: float = 0.020  # 20ms
+MAX_FRAMES: int = 400  # 8 seconds at 20ms/frame
 SILENCE_FRAME: bytes = b"\xff" * FRAME_BYTES  # mulaw silence (zero amplitude)
-CATCHUP_LIMIT: float = 5 * FRAME_INTERVAL     # 100ms — reset threshold
+CATCHUP_LIMIT: float = 5 * FRAME_INTERVAL  # 100ms — reset threshold
 
 
 # ---------------------------------------------------------------------------
@@ -147,16 +147,24 @@ class AudioMixer:
     def start(self) -> None:
         """Start ffplay and the mix drain thread."""
         import shutil
+
         if not shutil.which("ffplay"):
             raise RuntimeError(
                 "ffplay not found — install ffmpeg to use AudioMixer: "
                 "https://ffmpeg.org/download.html"
             )
         cmd = [
-            "ffplay", "-nodisp",
-            "-probesize", "32",
-            "-fflags", "nobuffer",
-            "-f", "mulaw", "-ar", "8000", "-",
+            "ffplay",
+            "-nodisp",
+            "-probesize",
+            "32",
+            "-fflags",
+            "nobuffer",
+            "-f",
+            "mulaw",
+            "-ar",
+            "8000",
+            "-",
         ]
         self._proc = subprocess.Popen(  # noqa: S603
             cmd,
@@ -256,7 +264,9 @@ class AudioMixer:
                 duration_s = self._record_bytes / 8000
                 logger.info(
                     "AudioMixer recording saved: %s (%.1fs, %d bytes)",
-                    self._record_path, duration_s, self._record_bytes,
+                    self._record_path,
+                    duration_s,
+                    self._record_bytes,
                 )
             except OSError:
                 logger.warning("AudioMixer: failed to finalize recording")
@@ -271,7 +281,9 @@ class AudioMixer:
                 self._proc.wait(timeout=2.0)
             except subprocess.TimeoutExpired:
                 # NC-170 Fix 5: SIGKILL after terminate timeout
-                logger.warning("AudioMixer: ffplay pid=%d did not terminate, sending SIGKILL", pid)
+                logger.warning(
+                    "AudioMixer: ffplay pid=%d did not terminate, sending SIGKILL", pid
+                )
                 self._proc.kill()
                 with contextlib.suppress(Exception):
                     self._proc.wait(timeout=1.0)

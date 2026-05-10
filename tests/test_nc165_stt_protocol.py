@@ -60,9 +60,7 @@ class TestAzureSttConformance:
 
         stt = AzurePersistentStt()
         for attr in REQUIRED_ATTRIBUTES:
-            assert hasattr(stt, attr), (
-                f"AzurePersistentStt missing attribute: {attr}"
-            )
+            assert hasattr(stt, attr), f"AzurePersistentStt missing attribute: {attr}"
 
     def test_on_committed_default_is_none(self):
         from voice_runtime.providers.azure_stt import AzurePersistentStt
@@ -88,9 +86,7 @@ class TestElevenLabsSttConformance:
 
         stt = PersistentSttSession()
         for attr in REQUIRED_ATTRIBUTES:
-            assert hasattr(stt, attr), (
-                f"PersistentSttSession missing attribute: {attr}"
-            )
+            assert hasattr(stt, attr), f"PersistentSttSession missing attribute: {attr}"
 
     def test_on_committed_default_is_none(self):
         from voice_runtime.providers.elevenlabs_stt import PersistentSttSession

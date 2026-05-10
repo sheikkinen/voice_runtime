@@ -50,9 +50,7 @@ def test_concurrent_send_mark_and_wait_same_name_does_not_cross_resolve():
         for delay in delays:
             if stop.is_set():
                 return
-            future = asyncio.run_coroutine_threadsafe(
-                session._mark_queue.get(), loop
-            )
+            future = asyncio.run_coroutine_threadsafe(session._mark_queue.get(), loop)
             try:
                 mark = future.result(timeout=5.0)
             except Exception:

@@ -57,9 +57,7 @@ class TestMockTtsOnSpoken:
 
         tts.speak("mark test", session)
 
-        session.send_mark_and_wait.assert_called_once_with(
-            "tts_complete", timeout=10.0
-        )
+        session.send_mark_and_wait.assert_called_once_with("tts_complete", timeout=10.0)
 
     def test_on_spoken_exception_does_not_break_speak(self):
         from voice_runtime.mock.tts import MockTts

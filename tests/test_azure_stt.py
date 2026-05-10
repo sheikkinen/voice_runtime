@@ -24,6 +24,7 @@ from tests.conftest import requires_azure
 # AzurePersistentStt
 # ---------------------------------------------------------------------------
 
+
 @requires_azure
 class TestAzurePersistentSttInit:
     def test_defaults(self):
@@ -64,14 +65,25 @@ class TestAzurePersistentSttStart:
         stt = AzurePersistentStt(subscription_key="test-key")
         inbound = asyncio.Queue()
 
-        with patch("azure.cognitiveservices.speech.SpeechConfig") as mock_config_cls, \
-             patch("azure.cognitiveservices.speech.audio.AudioStreamFormat") as mock_fmt_cls, \
-             patch("azure.cognitiveservices.speech.audio.PushAudioInputStream") as mock_stream_cls, \
-             patch("azure.cognitiveservices.speech.audio.AudioConfig") as mock_audio_cfg_cls, \
-             patch("azure.cognitiveservices.speech.SpeechRecognizer") as mock_recognizer_cls:
-
+        with (
+            patch("azure.cognitiveservices.speech.SpeechConfig") as mock_config_cls,
+            patch(
+                "azure.cognitiveservices.speech.audio.AudioStreamFormat"
+            ) as mock_fmt_cls,
+            patch(
+                "azure.cognitiveservices.speech.audio.PushAudioInputStream"
+            ) as mock_stream_cls,
+            patch(
+                "azure.cognitiveservices.speech.audio.AudioConfig"
+            ) as mock_audio_cfg_cls,
+            patch(
+                "azure.cognitiveservices.speech.SpeechRecognizer"
+            ) as mock_recognizer_cls,
+        ):
             mock_recognizer = MagicMock()
-            mock_recognizer.start_continuous_recognition_async.return_value = MagicMock()
+            mock_recognizer.start_continuous_recognition_async.return_value = (
+                MagicMock()
+            )
             mock_recognizer.start_continuous_recognition_async.return_value.get.return_value = None
             mock_recognizer_cls.return_value = mock_recognizer
 
@@ -104,14 +116,19 @@ class TestAzurePersistentSttStop:
         stt = AzurePersistentStt(subscription_key="test-key")
         inbound = asyncio.Queue()
 
-        with patch("azure.cognitiveservices.speech.SpeechConfig"), \
-             patch("azure.cognitiveservices.speech.audio.AudioStreamFormat"), \
-             patch("azure.cognitiveservices.speech.audio.PushAudioInputStream"), \
-             patch("azure.cognitiveservices.speech.audio.AudioConfig"), \
-             patch("azure.cognitiveservices.speech.SpeechRecognizer") as mock_recognizer_cls:
-
+        with (
+            patch("azure.cognitiveservices.speech.SpeechConfig"),
+            patch("azure.cognitiveservices.speech.audio.AudioStreamFormat"),
+            patch("azure.cognitiveservices.speech.audio.PushAudioInputStream"),
+            patch("azure.cognitiveservices.speech.audio.AudioConfig"),
+            patch(
+                "azure.cognitiveservices.speech.SpeechRecognizer"
+            ) as mock_recognizer_cls,
+        ):
             mock_recognizer = MagicMock()
-            mock_recognizer.start_continuous_recognition_async.return_value = MagicMock()
+            mock_recognizer.start_continuous_recognition_async.return_value = (
+                MagicMock()
+            )
             mock_recognizer.start_continuous_recognition_async.return_value.get.return_value = None
             mock_recognizer.stop_continuous_recognition_async.return_value = MagicMock()
             mock_recognizer.stop_continuous_recognition_async.return_value.get.return_value = None
@@ -220,4 +237,3 @@ class TestAzurePersistentSttFeedAudio:
 
         assert mock_push_stream.write.call_count == 2
         mock_push_stream.close.assert_called_once()
-

@@ -37,6 +37,7 @@ def _capture_handler(session):
             nonlocal captured
             captured = fn
             return fn
+
         return decorator
 
     app = MagicMock()
@@ -54,11 +55,13 @@ def _make_ws_mock(*, block_after_start=True):
     """
     messages = [
         json.dumps({"event": "connected"}),
-        json.dumps({
-            "event": "start",
-            "streamSid": "test-sid",
-            "start": {"callSid": "test-call"},
-        }),
+        json.dumps(
+            {
+                "event": "start",
+                "streamSid": "test-sid",
+                "start": {"callSid": "test-call"},
+            }
+        ),
     ]
     msg_idx = 0
     block_event = asyncio.Event()

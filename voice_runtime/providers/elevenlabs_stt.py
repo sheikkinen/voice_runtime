@@ -37,7 +37,9 @@ class PersistentSttSession:
     via on_committed callback.
     """
 
-    def __init__(self, api_key: str | None = None, language_code: str | None = None) -> None:
+    def __init__(
+        self, api_key: str | None = None, language_code: str | None = None
+    ) -> None:
         self._api_key = api_key or ELEVENLABS_API_KEY
         self._language_code = language_code or STT_LANGUAGE_CODE
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -94,9 +96,15 @@ class PersistentSttSession:
         self._stt.on("partial_transcript", self._on_partial)
         self._stt.on("session_time_limit_exceeded", self._on_time_limit)
         for ev in (
-            "error", "auth_error", "quota_exceeded", "rate_limited",
-            "queue_overflow", "resource_exhausted", "input_error",
-            "transcriber_error", "chunk_size_exceeded",
+            "error",
+            "auth_error",
+            "quota_exceeded",
+            "rate_limited",
+            "queue_overflow",
+            "resource_exhausted",
+            "input_error",
+            "transcriber_error",
+            "chunk_size_exceeded",
         ):
             self._stt.on(ev, self._on_error)
         logger.info("Scribe WebSocket connected")
@@ -127,7 +135,8 @@ class PersistentSttSession:
                 if spoke_for > self._RECONNECT_AFTER_SPEAKING_S:
                     logger.info(
                         "Scribe reconnect: TTS lasted %.1fs (threshold %.1fs)",
-                        spoke_for, self._RECONNECT_AFTER_SPEAKING_S,
+                        spoke_for,
+                        self._RECONNECT_AFTER_SPEAKING_S,
                     )
                     asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
 
@@ -165,14 +174,15 @@ class PersistentSttSession:
 
         # NC-170 Fix 2: exponential backoff with jitter
         delay = min(
-            self._RECONNECT_BASE_DELAY_S * (2 ** self._reconnect_attempt),
+            self._RECONNECT_BASE_DELAY_S * (2**self._reconnect_attempt),
             self._RECONNECT_MAX_DELAY_S,
         )
         delay *= 0.75 + random.random() * 0.5  # noqa: S311 jitter ±25%, not cryptographic
 
         logger.info(
             "Reconnecting Scribe in %.1fs (attempt %d)...",
-            delay, self._reconnect_attempt + 1,
+            delay,
+            self._reconnect_attempt + 1,
         )
         await asyncio.sleep(delay)
 
@@ -182,7 +192,9 @@ class PersistentSttSession:
             self._reconnect_attempt = 0
         except Exception as exc:
             self._reconnect_attempt += 1
-            logger.error("Scribe reconnect failed (attempt %d): %s", self._reconnect_attempt, exc)
+            logger.error(
+                "Scribe reconnect failed (attempt %d): %s", self._reconnect_attempt, exc
+            )
 
     _MAX_CONSECUTIVE_SEND_FAILURES = 3  # NC-260 Gap C
 
@@ -194,14 +206,20 @@ class PersistentSttSession:
             while True:
                 frame = await inbound.get()
                 if frame is None:
-                    logger.info("_feed_audio: sentinel received after %d frames", frame_count)
+                    logger.info(
+                        "_feed_audio: sentinel received after %d frames", frame_count
+                    )
                     break
                 if self._time_limit_event.is_set():
                     logger.info("_feed_audio: time limit after %d frames", frame_count)
                     break
                 frame_count += 1
                 if frame_count % 100 == 0:
-                    logger.info("_feed_audio: %d frames fed (speaking=%s)", frame_count, self._speaking)
+                    logger.info(
+                        "_feed_audio: %d frames fed (speaking=%s)",
+                        frame_count,
+                        self._speaking,
+                    )
                 audio_b64 = base64.b64encode(frame).decode("ascii")
                 try:
                     await self._stt.send({"audio_base_64": audio_b64})
@@ -214,9 +232,15 @@ class PersistentSttSession:
                             consecutive_failures,
                         )
                         if self.on_error:
-                            self.on_error(f"feed_audio_{consecutive_failures}_consecutive_send_failures")
+                            self.on_error(
+                                f"feed_audio_{consecutive_failures}_consecutive_send_failures"
+                            )
                         break
-                    logger.debug("_feed_audio: send failed (%d/%d)", consecutive_failures, self._MAX_CONSECUTIVE_SEND_FAILURES)
+                    logger.debug(
+                        "_feed_audio: send failed (%d/%d)",
+                        consecutive_failures,
+                        self._MAX_CONSECUTIVE_SEND_FAILURES,
+                    )
                     await asyncio.sleep(0.1)
         except asyncio.CancelledError:
             logger.info("_feed_audio: cancelled after %d frames", frame_count)
@@ -255,22 +279,33 @@ class PersistentSttSession:
 
     def _on_time_limit(self, data: dict) -> None:
         logger.critical(
-            "ElevenLabs session time limit exceeded — STT degraded. data=%s", data,
+            "ElevenLabs session time limit exceeded — STT degraded. data=%s",
+            data,
         )
         if self._loop:
             self._loop.call_soon_threadsafe(self._time_limit_event.set)
         if self.on_error:  # NC-258 J-6
             self.on_error("session_time_limit_exceeded")
 
-    _FATAL_ERRORS = frozenset({
-        "queue_overflow", "resource_exhausted",
-        "transcriber_error", "chunk_size_exceeded", "server_error",
-    })
+    _FATAL_ERRORS = frozenset(
+        {
+            "queue_overflow",
+            "resource_exhausted",
+            "transcriber_error",
+            "chunk_size_exceeded",
+            "server_error",
+        }
+    )
 
     # NC-260 Gap C: non-reconnectable — fire on_error directly, no retry
-    _TERMINAL_ERRORS = frozenset({
-        "auth_error", "quota_exceeded", "rate_limited", "input_error",
-    })
+    _TERMINAL_ERRORS = frozenset(
+        {
+            "auth_error",
+            "quota_exceeded",
+            "rate_limited",
+            "input_error",
+        }
+    )
 
     def _on_error(self, data: dict) -> None:
         msg_type = data.get("message_type", "")
@@ -278,7 +313,8 @@ class PersistentSttSession:
 
         if msg_type in self._FATAL_ERRORS and self._loop and self._inbound_queue:
             logger.warning(
-                "STT fatal error (%s) — scheduling reconnect", msg_type,
+                "STT fatal error (%s) — scheduling reconnect",
+                msg_type,
             )
             asyncio.run_coroutine_threadsafe(self._reconnect_after_error(), self._loop)
         elif msg_type in self._TERMINAL_ERRORS:

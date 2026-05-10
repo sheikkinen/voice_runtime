@@ -37,7 +37,10 @@ class TestFix1SilentExceptions:
         future = MagicMock()
         future.result = MagicMock(side_effect=TimeoutError("test timeout"))
 
-        with patch("voice_runtime.session.asyncio.run_coroutine_threadsafe", return_value=future):
+        with patch(
+            "voice_runtime.session.asyncio.run_coroutine_threadsafe",
+            return_value=future,
+        ):
             with caplog.at_level(logging.DEBUG, logger="voice_runtime.session"):
                 s.clear_inbound()
 
@@ -152,9 +155,7 @@ class TestFix2ReconnectBackoff:
                 delays.append(call[0][0])
 
         # Delays should increase (with jitter: ±25%)
-        assert delays[0] < delays[1] < delays[2], (
-            f"Delays should increase: {delays}"
-        )
+        assert delays[0] < delays[1] < delays[2], f"Delays should increase: {delays}"
         # First delay ~1s (0.75-1.25 with jitter)
         assert 0.5 < delays[0] < 1.5, f"First delay out of range: {delays[0]}"
 
@@ -165,7 +166,9 @@ class TestFix2ReconnectBackoff:
 
         stt = PersistentSttSession(api_key="test-key")
         stt._inbound_queue = asyncio.Queue()
-        stt._reconnect_attempt = 1  # simulate one previous failure (under NC-258 cap of 3)
+        stt._reconnect_attempt = (
+            1  # simulate one previous failure (under NC-258 cap of 3)
+        )
 
         connect_called = False
 
@@ -298,7 +301,9 @@ class TestFix4FrameSizeLogging:
             with caplog.at_level(logging.DEBUG, logger="voice_runtime.session"):
                 s.put_inbound(b"\xff" * 160)
 
-            frame_logs = [r for r in caplog.records if "frame size" in r.message.lower()]
+            frame_logs = [
+                r for r in caplog.records if "frame size" in r.message.lower()
+            ]
             assert len(frame_logs) == 0, "Standard 160-byte frame should not log"
         finally:
             loop.close()
@@ -315,7 +320,9 @@ class TestFix4FrameSizeLogging:
             with caplog.at_level(logging.DEBUG, logger="voice_runtime.session"):
                 s.put_inbound(b"\xff" * 320)  # double-size frame
 
-            frame_logs = [r for r in caplog.records if "frame size" in r.message.lower()]
+            frame_logs = [
+                r for r in caplog.records if "frame size" in r.message.lower()
+            ]
             assert len(frame_logs) == 1, "Non-standard frame should log once"
             assert frame_logs[0].levelno == logging.DEBUG
         finally:
@@ -332,7 +339,9 @@ class TestFix4FrameSizeLogging:
         s.put_inbound(b"\xff" * 320)
         await asyncio.sleep(0.05)  # let coroutine run
 
-        assert not s.inbound.empty(), "Frame should be enqueued despite non-standard size"
+        assert not s.inbound.empty(), (
+            "Frame should be enqueued despite non-standard size"
+        )
 
     def test_empty_frame_no_log(self, caplog):
         """Empty bytes should not produce frame size log (it's a sentinel-adjacent case)."""
@@ -346,7 +355,9 @@ class TestFix4FrameSizeLogging:
             with caplog.at_level(logging.DEBUG, logger="voice_runtime.session"):
                 s.put_inbound(b"")
 
-            frame_logs = [r for r in caplog.records if "frame size" in r.message.lower()]
+            frame_logs = [
+                r for r in caplog.records if "frame size" in r.message.lower()
+            ]
             assert len(frame_logs) == 0, "Empty frame should not log"
         finally:
             loop.close()

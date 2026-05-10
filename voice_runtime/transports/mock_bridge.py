@@ -61,9 +61,7 @@ class FakeWsBridge:
     def start(self, ws_url: str) -> None:
         """Connect to ws_url in a background thread and run the echo loop."""
         self._running = True
-        self._thread = threading.Thread(
-            target=self._run, args=(ws_url,), daemon=True
-        )
+        self._thread = threading.Thread(target=self._run, args=(ws_url,), daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
@@ -90,11 +88,15 @@ class FakeWsBridge:
                 self._ws = ws
                 # Twilio handshake: connected + start
                 await ws.send(json.dumps({"event": "connected"}))
-                await ws.send(json.dumps({
-                    "event": "start",
-                    "streamSid": self._stream_sid,
-                    "start": {"callSid": self._call_sid},
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "event": "start",
+                            "streamSid": self._stream_sid,
+                            "start": {"callSid": self._call_sid},
+                        }
+                    )
+                )
                 logger.info(
                     "FakeWsBridge connected: call_sid=%s stream_sid=%s url=%s",
                     self._call_sid,
@@ -109,8 +111,7 @@ class FakeWsBridge:
                         continue
                     except websockets.ConnectionClosed as e:
                         logger.info(
-                            "FakeWsBridge: peer closed connection "
-                            "(code=%s reason=%s)",
+                            "FakeWsBridge: peer closed connection (code=%s reason=%s)",
                             e.code,
                             e.reason,
                         )
@@ -119,24 +120,30 @@ class FakeWsBridge:
                     event = data.get("event")
                     if event == "mark":
                         mark_name = data.get("mark", {}).get("name", "")
-                        await ws.send(json.dumps({
-                            "event": "mark",
-                            "mark": {"name": mark_name},
-                        }))
+                        await ws.send(
+                            json.dumps(
+                                {
+                                    "event": "mark",
+                                    "mark": {"name": mark_name},
+                                }
+                            )
+                        )
                         logger.info("FakeWsBridge echoed mark: %s", mark_name)
                     elif event == "clear":
                         logger.info("FakeWsBridge received clear")
                     elif event == "media":
                         pass  # ignore audio frames silently
                     else:
-                        logger.info(
-                            "FakeWsBridge received event: %s", event
-                        )
+                        logger.info("FakeWsBridge received event: %s", event)
                 # Send stop on clean exit
-                await ws.send(json.dumps({
-                    "event": "stop",
-                    "streamSid": self._stream_sid,
-                }))
+                await ws.send(
+                    json.dumps(
+                        {
+                            "event": "stop",
+                            "streamSid": self._stream_sid,
+                        }
+                    )
+                )
                 logger.info("FakeWsBridge sent stop, shutting down")
         except Exception:
             logger.exception("FakeWsBridge error connecting to %s", ws_url)
@@ -192,9 +199,7 @@ def initiate_mock_call(target_url: str, caller_url: str | None = None) -> str:
         caller_bridge.start(f"{caller_ws}/voice")
         _active_bridges.append(caller_bridge)
     else:
-        logger.warning(
-            "No caller_url or VOICE_STREAM_URL — caller marks won't echo"
-        )
+        logger.warning("No caller_url or VOICE_STREAM_URL — caller marks won't echo")
 
     return call_sid
 

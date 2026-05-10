@@ -49,11 +49,15 @@ def _make_app_client(session):
 
 def _send_start_event(ws, stream_sid="SID1", call_sid="CA1"):
     """Send a Twilio 'start' event through the WebSocket."""
-    ws.send_text(json.dumps({
-        "event": "start",
-        "streamSid": stream_sid,
-        "start": {"callSid": call_sid},
-    }))
+    ws.send_text(
+        json.dumps(
+            {
+                "event": "start",
+                "streamSid": stream_sid,
+                "start": {"callSid": call_sid},
+            }
+        )
+    )
 
 
 def _send_stop_event(ws):

@@ -82,11 +82,15 @@ class TestTwilioTransportProtocol:
 
         with TestClient(app) as client:
             with client.websocket_connect("/voice") as ws:
-                ws.send_text(json.dumps({
-                    "event": "start",
-                    "streamSid": "stream_abc",
-                    "start": {"callSid": "call_123"},
-                }))
+                ws.send_text(
+                    json.dumps(
+                        {
+                            "event": "start",
+                            "streamSid": "stream_abc",
+                            "start": {"callSid": "call_123"},
+                        }
+                    )
+                )
                 ws.send_text(json.dumps({"event": "stop"}))
 
         session.signal_ws_connected.assert_called_once_with("stream_abc")
@@ -104,10 +108,14 @@ class TestTwilioTransportProtocol:
 
         with TestClient(app) as client:
             with client.websocket_connect("/voice") as ws:
-                ws.send_text(json.dumps({
-                    "event": "media",
-                    "media": {"payload": encoded},
-                }))
+                ws.send_text(
+                    json.dumps(
+                        {
+                            "event": "media",
+                            "media": {"payload": encoded},
+                        }
+                    )
+                )
                 ws.send_text(json.dumps({"event": "stop"}))
 
         session.put_inbound.assert_called_once_with(audio_data)
@@ -121,10 +129,14 @@ class TestTwilioTransportProtocol:
 
         with TestClient(app) as client:
             with client.websocket_connect("/voice") as ws:
-                ws.send_text(json.dumps({
-                    "event": "mark",
-                    "mark": {"name": "tts_complete"},
-                }))
+                ws.send_text(
+                    json.dumps(
+                        {
+                            "event": "mark",
+                            "mark": {"name": "tts_complete"},
+                        }
+                    )
+                )
                 ws.send_text(json.dumps({"event": "stop"}))
 
         session.signal_mark_received.assert_called_once_with("tts_complete")
@@ -155,10 +167,14 @@ class TestTwilioTransportProtocol:
 
         with TestClient(app) as client:
             with client.websocket_connect("/voice") as ws:
-                ws.send_text(json.dumps({
-                    "event": "media",
-                    "media": {"payload": encoded},
-                }))
+                ws.send_text(
+                    json.dumps(
+                        {
+                            "event": "media",
+                            "media": {"payload": encoded},
+                        }
+                    )
+                )
                 ws.send_text(json.dumps({"event": "stop"}))
 
         session.tap_caller.assert_called_once_with(audio_data)
@@ -188,9 +204,11 @@ class TestSignatureValidation:
         monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
 
         from voice_runtime.transports import twilio_ws
+
         monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
 
         from voice_runtime.transports.twilio_ws import register_voice_websocket
+
         app = FastAPI()
         session = _make_session()
         register_voice_websocket(app, session)
@@ -210,9 +228,11 @@ class TestSignatureValidation:
         monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
 
         from voice_runtime.transports import twilio_ws
+
         monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
 
         from voice_runtime.transports.twilio_ws import register_voice_websocket
+
         app = FastAPI()
         session = _make_session()
         register_voice_websocket(app, session)
@@ -234,9 +254,11 @@ class TestSignatureValidation:
         monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
 
         from voice_runtime.transports import twilio_ws
+
         monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
 
         from voice_runtime.transports.twilio_ws import register_voice_websocket
+
         app = FastAPI()
         session = _make_session()
         register_voice_websocket(app, session)
@@ -253,9 +275,11 @@ class TestSignatureValidation:
         monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
 
         from voice_runtime.transports import twilio_ws
+
         monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", True)
 
         from voice_runtime.transports.twilio_ws import register_voice_websocket
+
         app = FastAPI()
         session = _make_session()
         register_voice_websocket(app, session)

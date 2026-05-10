@@ -32,10 +32,12 @@ class TestTtsProviderProtocol:
 
     def test_tts_provider_protocol_exists(self):
         from voice_runtime.providers import TtsProvider
+
         assert "on_error" in TtsProvider.__annotations__
 
     def test_tts_provider_has_speak_method(self):
         from voice_runtime.providers import TtsProvider
+
         assert "speak" in dir(TtsProvider)
 
 
@@ -45,6 +47,7 @@ class TestAzureTtsOnError:
 
     def test_azure_tts_has_on_error_attribute(self):
         from voice_runtime.providers.azure_tts import AzureTTS
+
         tts = AzureTTS(subscription_key="fake", region="fake")
         assert hasattr(tts, "on_error"), "AzureTTS must have on_error attribute"
         assert tts.on_error is None, "on_error should default to None"
@@ -74,7 +77,10 @@ class TestAzureTtsOnError:
         assert len(errors_received) == 1, (
             f"on_error should fire once, got {len(errors_received)} calls"
         )
-        assert "synthesis" in errors_received[0].lower() or "azure" in errors_received[0].lower()
+        assert (
+            "synthesis" in errors_received[0].lower()
+            or "azure" in errors_received[0].lower()
+        )
         loop.close()
 
 
@@ -83,6 +89,7 @@ class TestElevenLabsTtsOnError:
 
     def test_elevenlabs_tts_has_on_error_attribute(self):
         from voice_runtime.providers.elevenlabs_tts import ElevenLabsTTS
+
         tts = ElevenLabsTTS(api_key="fake")
         assert hasattr(tts, "on_error"), "ElevenLabsTTS must have on_error attribute"
         assert tts.on_error is None, "on_error should default to None"

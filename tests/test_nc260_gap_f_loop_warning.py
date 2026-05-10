@@ -17,7 +17,9 @@ from voice_runtime.session import VoiceSession
 class TestPutInboundLoopWarning:
     """put_inbound must warn when _loop is None."""
 
-    def test_put_inbound_warns_when_loop_none(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_put_inbound_warns_when_loop_none(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Calling put_inbound with _loop=None should log a warning."""
         session = VoiceSession(call_sid="test")
         assert session._loop is None
@@ -29,7 +31,9 @@ class TestPutInboundLoopWarning:
             f"Expected warning about _loop being None, got: {caplog.messages}"
         )
 
-    def test_put_inbound_warns_once_not_spam(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_put_inbound_warns_once_not_spam(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
         """Warning should not spam — emit at most once."""
         session = VoiceSession(call_sid="test")
 

@@ -127,9 +127,11 @@ class TestFeedAudioEscalation:
         # Fail twice, succeed, fail twice more, succeed, then sentinel
         call_count = 0
         fail_succeed_pattern = [
-            Exception("fail"), Exception("fail"),
+            Exception("fail"),
+            Exception("fail"),
             None,  # success
-            Exception("fail"), Exception("fail"),
+            Exception("fail"),
+            Exception("fail"),
             None,  # success
         ]
 

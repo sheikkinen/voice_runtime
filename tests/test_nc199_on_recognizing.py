@@ -118,7 +118,9 @@ class TestElevenLabsOnRecognizing:
         sys.modules["elevenlabs.realtime.scribe"].CommitStrategy = MockCommitStrategy
 
         # Clear cached imports
-        to_clear = [k for k in sys.modules if k.startswith("voice_runtime.providers.elevenlabs")]
+        to_clear = [
+            k for k in sys.modules if k.startswith("voice_runtime.providers.elevenlabs")
+        ]
         for k in to_clear:
             del sys.modules[k]
 
@@ -134,7 +136,11 @@ class TestElevenLabsOnRecognizing:
                     sys.modules.pop(m, None)
                 else:
                     sys.modules[m] = orig
-            to_clear = [k for k in sys.modules if k.startswith("voice_runtime.providers.elevenlabs")]
+            to_clear = [
+                k
+                for k in sys.modules
+                if k.startswith("voice_runtime.providers.elevenlabs")
+            ]
             for k in to_clear:
                 del sys.modules[k]
 

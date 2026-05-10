@@ -76,7 +76,9 @@ class TestElevenLabsTTSSpeak:
         stop_event.set()  # pre-set — interrupt immediately on first chunk
 
         mock_client = MagicMock()
-        mock_client.text_to_speech.convert.return_value = iter([b"\x00" * 160, b"\xff" * 160])
+        mock_client.text_to_speech.convert.return_value = iter(
+            [b"\x00" * 160, b"\xff" * 160]
+        )
 
         with patch("elevenlabs.ElevenLabs", return_value=mock_client):
             result = tts.speak("hello", session, stop_event=stop_event)

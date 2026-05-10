@@ -76,18 +76,10 @@ class VoiceSession:
     _loop: asyncio.AbstractEventLoop | None = field(default=None, repr=False)
 
     # --- Internal state ---
-    _ws_connected: threading.Event = field(
-        default_factory=threading.Event, repr=False
-    )
-    _disconnected: threading.Event = field(
-        default_factory=threading.Event, repr=False
-    )
-    _pending_marks: dict[str, threading.Event] = field(
-        default_factory=dict, repr=False
-    )
-    _mark_queue: Queue[str] = field(
-        default_factory=lambda: asyncio.Queue(), repr=False
-    )
+    _ws_connected: threading.Event = field(default_factory=threading.Event, repr=False)
+    _disconnected: threading.Event = field(default_factory=threading.Event, repr=False)
+    _pending_marks: dict[str, threading.Event] = field(default_factory=dict, repr=False)
+    _mark_queue: Queue[str] = field(default_factory=lambda: asyncio.Queue(), repr=False)
 
     # --- Optional audio monitoring ---
     _mixer: Any = field(default=None, repr=False)
@@ -97,7 +89,9 @@ class VoiceSession:
     _clear_queue: asyncio.Queue[str] | None = field(default=None, repr=False)
     stt: SttProvider | None = field(default=None, repr=False)
     stt_factory: Callable[[], SttProvider] | None = field(default=None, repr=False)
-    stt_secondary_factory: Callable[[], SttProvider] | None = field(default=None, repr=False)
+    stt_secondary_factory: Callable[[], SttProvider] | None = field(
+        default=None, repr=False
+    )
     on_stt_ready: Callable[[SttProvider], None] | None = field(default=None, repr=False)
 
     # --- Loop / lifecycle ---
@@ -130,10 +124,16 @@ class VoiceSession:
                 self._loop_none_warned = True
             return
         # NC-170 Fix 4: log non-standard frame sizes (first occurrence only)
-        if data is not None and len(data) != FRAME_BYTES and len(data) > 0 and not self._frame_size_warned:
+        if (
+            data is not None
+            and len(data) != FRAME_BYTES
+            and len(data) > 0
+            and not self._frame_size_warned
+        ):
             logger.debug(
                 "put_inbound: non-standard frame size %d (expected %d)",
-                len(data), FRAME_BYTES,
+                len(data),
+                FRAME_BYTES,
             )
             self._frame_size_warned = True
         asyncio.run_coroutine_threadsafe(self.inbound.put(data), self._loop)
@@ -199,9 +199,7 @@ class VoiceSession:
         event = threading.Event()
         self._pending_marks[unique] = event
 
-        asyncio.run_coroutine_threadsafe(
-            self._mark_queue.put(unique), self._loop
-        )
+        asyncio.run_coroutine_threadsafe(self._mark_queue.put(unique), self._loop)
 
         try:
             if not event.wait(timeout=timeout) and not self.is_disconnected:
@@ -283,7 +281,7 @@ class VoiceSession:
                 asyncio.run_coroutine_threadsafe(self.stt.stop(), self._loop)
             else:
                 # Best-effort sync stop (cancel feed task at minimum)
-                if hasattr(self.stt, '_feed_task') and self.stt._feed_task:
+                if hasattr(self.stt, "_feed_task") and self.stt._feed_task:
                     self.stt._feed_task.cancel()
         self.stt = None
         # Drain stale audio queues

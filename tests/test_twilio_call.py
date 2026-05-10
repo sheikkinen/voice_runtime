@@ -52,7 +52,12 @@ class TestInitiateOutboundCall:
 
         with patch.dict(
             "os.environ",
-            {"TWILIO_ACCOUNT_SID": "AC1", "TWILIO_AUTH_TOKEN": "t", "TWILIO_PHONE_NUMBER": "+1", "VOICE_STREAM_URL": ""},
+            {
+                "TWILIO_ACCOUNT_SID": "AC1",
+                "TWILIO_AUTH_TOKEN": "t",
+                "TWILIO_PHONE_NUMBER": "+1",
+                "VOICE_STREAM_URL": "",
+            },
             clear=False,
         ):
             # Also clear NGROK_URL fallback
@@ -65,7 +70,11 @@ class TestInitiateOutboundCall:
 
         with patch.dict(
             "os.environ",
-            {"TWILIO_ACCOUNT_SID": "", "TWILIO_AUTH_TOKEN": "", "VOICE_STREAM_URL": "https://x"},
+            {
+                "TWILIO_ACCOUNT_SID": "",
+                "TWILIO_AUTH_TOKEN": "",
+                "VOICE_STREAM_URL": "https://x",
+            },
             clear=False,
         ):
             with pytest.raises(RuntimeError, match="TWILIO_ACCOUNT_SID"):
@@ -74,16 +83,19 @@ class TestInitiateOutboundCall:
     def test_missing_phone_number_raises(self):
         from voice_runtime.transports.twilio_call import initiate_outbound_call
 
-        with patch.dict(
-            "os.environ",
-            {
-                "TWILIO_ACCOUNT_SID": "AC1",
-                "TWILIO_AUTH_TOKEN": "t",
-                "TWILIO_PHONE_NUMBER": "",
-                "VOICE_STREAM_URL": "https://x",
-            },
-            clear=False,
-        ), pytest.raises(RuntimeError, match="TWILIO_PHONE_NUMBER"):
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "TWILIO_ACCOUNT_SID": "AC1",
+                    "TWILIO_AUTH_TOKEN": "t",
+                    "TWILIO_PHONE_NUMBER": "",
+                    "VOICE_STREAM_URL": "https://x",
+                },
+                clear=False,
+            ),
+            pytest.raises(RuntimeError, match="TWILIO_PHONE_NUMBER"),
+        ):
             initiate_outbound_call("+358401234567")
 
     def test_successful_call_returns_sid(self):
@@ -94,16 +106,19 @@ class TestInitiateOutboundCall:
         mock_client = MagicMock()
         mock_client.calls.create.return_value = mock_call
 
-        with patch.dict(
-            "os.environ",
-            {
-                "TWILIO_ACCOUNT_SID": "AC1",
-                "TWILIO_AUTH_TOKEN": "token",
-                "TWILIO_PHONE_NUMBER": "+15551234567",
-                "VOICE_STREAM_URL": "https://example.ngrok.io",
-            },
-            clear=False,
-        ), patch("twilio.rest.Client", return_value=mock_client):
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "TWILIO_ACCOUNT_SID": "AC1",
+                    "TWILIO_AUTH_TOKEN": "token",
+                    "TWILIO_PHONE_NUMBER": "+15551234567",
+                    "VOICE_STREAM_URL": "https://example.ngrok.io",
+                },
+                clear=False,
+            ),
+            patch("twilio.rest.Client", return_value=mock_client),
+        ):
             sid = initiate_outbound_call("+358401234567")
 
         assert sid == "CA123"

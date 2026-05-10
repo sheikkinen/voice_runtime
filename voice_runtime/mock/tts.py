@@ -22,7 +22,9 @@ logger = logging.getLogger(__name__)
 class MockTts:
     """TTS provider that records calls without producing audio."""
 
-    def __init__(self, on_spoken: Callable[[str], None] | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self, on_spoken: Callable[[str], None] | None = None, **kwargs: Any
+    ) -> None:
         self.on_error: Callable[[str], None] | None = None
         self.on_spoken: Callable[[str], None] | None = on_spoken
         self.spoken: list[str] = []

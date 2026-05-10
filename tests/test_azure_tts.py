@@ -96,9 +96,13 @@ class TestAzureTTSSpeak:
         mock_future.get.return_value = mock_result
         mock_synthesizer.speak_text_async.return_value = mock_future
 
-        with patch("azure.cognitiveservices.speech.SpeechConfig") as mock_config_cls, \
-             patch("azure.cognitiveservices.speech.SpeechSynthesizer", return_value=mock_synthesizer):
-
+        with (
+            patch("azure.cognitiveservices.speech.SpeechConfig") as mock_config_cls,
+            patch(
+                "azure.cognitiveservices.speech.SpeechSynthesizer",
+                return_value=mock_synthesizer,
+            ),
+        ):
             # Before speak_text_async().get() returns, simulate audio chunks
             def trigger_audio(*args, **kwargs):
                 for cb in synthesizing_callbacks:
@@ -139,8 +143,13 @@ class TestAzureTTSSpeak:
         mock_future = MagicMock()
         mock_future.get.return_value = mock_result
 
-        with patch("azure.cognitiveservices.speech.SpeechConfig"), \
-             patch("azure.cognitiveservices.speech.SpeechSynthesizer", return_value=mock_synthesizer):
+        with (
+            patch("azure.cognitiveservices.speech.SpeechConfig"),
+            patch(
+                "azure.cognitiveservices.speech.SpeechSynthesizer",
+                return_value=mock_synthesizer,
+            ),
+        ):
 
             def trigger_audio(*args, **kwargs):
                 for cb in synthesizing_callbacks:
@@ -177,10 +186,18 @@ class TestAzureTTSSpeak:
         mock_future.get.return_value = mock_result
         mock_synthesizer.speak_text_async.return_value = mock_future
 
-        with patch("azure.cognitiveservices.speech.SpeechConfig", return_value=mock_config), \
-             patch("azure.cognitiveservices.speech.SpeechSynthesizer", return_value=mock_synthesizer), \
-             patch("azure.cognitiveservices.speech.SpeechSynthesisOutputFormat") as mock_fmt:
-
+        with (
+            patch(
+                "azure.cognitiveservices.speech.SpeechConfig", return_value=mock_config
+            ),
+            patch(
+                "azure.cognitiveservices.speech.SpeechSynthesizer",
+                return_value=mock_synthesizer,
+            ),
+            patch(
+                "azure.cognitiveservices.speech.SpeechSynthesisOutputFormat"
+            ) as mock_fmt,
+        ):
             tts.speak("test", session)
 
             mock_config.set_speech_synthesis_output_format.assert_called_once_with(

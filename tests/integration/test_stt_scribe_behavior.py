@@ -83,42 +83,40 @@ async def test_scribe_committed_events_over_long_session():
     # --- Phase 1: 0–60s (early) ---
     segments = [
         # ~0s: greeting
-        ("PHASE_1_START", s0),                          # 1.3s  → ~1s
-        ("agent_responds_15s", _silence(15)),           #        → ~16s
+        ("PHASE_1_START", s0),  # 1.3s  → ~1s
+        ("agent_responds_15s", _silence(15)),  #        → ~16s
         # ~16s: symptom description
-        ("symptom_description", s3),                    # 5.3s  → ~22s
-        ("agent_responds_12s", _silence(12)),           #        → ~34s
+        ("symptom_description", s3),  # 5.3s  → ~22s
+        ("agent_responds_12s", _silence(12)),  #        → ~34s
         # ~34s: medication answer
-        ("medication_answer", s4),                      # 3.8s  → ~37s
-        ("agent_responds_15s", _silence(15)),           #        → ~52s
+        ("medication_answer", s4),  # 3.8s  → ~37s
+        ("agent_responds_15s", _silence(15)),  #        → ~52s
         # ~52s: time preference
-        ("time_preference", s5),                        # 3.6s  → ~56s
-        ("agent_responds_4s", _silence(4)),             #        → ~60s
-
+        ("time_preference", s5),  # 3.6s  → ~56s
+        ("agent_responds_4s", _silence(4)),  #        → ~60s
         # --- Phase 2: 60–120s (mid-session) ---
         # ~60s: personal details (long utterance)
-        ("PHASE_2_START", s6),                          # 6.9s  → ~67s
-        ("agent_responds_15s", _silence(15)),           #        → ~82s
+        ("PHASE_2_START", s6),  # 6.9s  → ~67s
+        ("agent_responds_15s", _silence(15)),  #        → ~82s
         # ~82s: confirm date
-        ("confirm_date", s2),                           # 2.0s  → ~84s
-        ("agent_responds_12s", _silence(12)),           #        → ~96s
+        ("confirm_date", s2),  # 2.0s  → ~84s
+        ("agent_responds_12s", _silence(12)),  #        → ~96s
         # ~96s: elaborate on request
-        ("elaborate_request", s1),                      # 2.8s  → ~99s
-        ("agent_responds_15s", _silence(15)),           #        → ~114s
-
+        ("elaborate_request", s1),  # 2.8s  → ~99s
+        ("agent_responds_15s", _silence(15)),  #        → ~114s
         # --- Phase 3: 120–180s (late session — degradation window) ---
         # ~114s: follow-up
-        ("PHASE_3_START", s3),                          # 5.3s  → ~119s
-        ("agent_responds_20s", _silence(20)),           #        → ~139s
+        ("PHASE_3_START", s3),  # 5.3s  → ~119s
+        ("agent_responds_20s", _silence(20)),  #        → ~139s
         # ~139s: goodbye
-        ("goodbye", s7),                                # 2.8s  → ~142s
-        ("long_agent_farewell_15s", _silence(15)),      #        → ~157s
+        ("goodbye", s7),  # 2.8s  → ~142s
+        ("long_agent_farewell_15s", _silence(15)),  #        → ~157s
         # ~157s: late repeat — same utterance as opening
-        ("late_repeat_greeting", s0),                   # 1.3s  → ~158s
-        ("agent_responds_12s", _silence(12)),           #        → ~170s
+        ("late_repeat_greeting", s0),  # 1.3s  → ~158s
+        ("agent_responds_12s", _silence(12)),  #        → ~170s
         # ~170s: final utterance — complex, name+date
-        ("final_utterance", s6),                        # 6.9s  → ~177s
-        ("trailing_3s", _silence(3)),                   #        → ~180s
+        ("final_utterance", s6),  # 6.9s  → ~177s
+        ("trailing_3s", _silence(3)),  #        → ~180s
     ]
 
     total_bytes = sum(len(d) for _, d in segments)
@@ -219,7 +217,7 @@ async def test_scribe_committed_events_over_long_session():
     # Phase analysis — check quality at different time offsets
     # Audio time = event timestamp × feed_speed_multiplier (~3x)
     # But we compare within real time since that's what matters
-    phase_1 = [e for e in non_empty if e["t"] - _t0 < 25]   # first ~60s audio
+    phase_1 = [e for e in non_empty if e["t"] - _t0 < 25]  # first ~60s audio
     phase_2 = [e for e in non_empty if 25 <= e["t"] - _t0 < 45]  # ~60-120s audio
     phase_3 = [e for e in non_empty if e["t"] - _t0 >= 45]  # ~120-180s audio
 
@@ -246,7 +244,8 @@ async def test_scribe_committed_events_over_long_session():
         logger.warning(
             "⚠ POSSIBLE DEGRADATION: Phase 3 (120-180s) had only %d non-empty "
             "commits vs Phase 1's %d. Investigate if queue_overflow occurred.",
-            len(phase_3), len(phase_1),
+            len(phase_3),
+            len(phase_1),
         )
     assert len(phase_3) >= 1, (
         f"DEGRADATION DETECTED: Phase 3 (120-180s) had {len(phase_3)} non-empty commits. "

@@ -72,9 +72,9 @@ class TestQueueAPI:
         t.start()
         try:
             s.put_outbound_sync(b"\xab" * 160)
-            result = asyncio.run_coroutine_threadsafe(
-                s.get_outbound(), loop
-            ).result(timeout=2)
+            result = asyncio.run_coroutine_threadsafe(s.get_outbound(), loop).result(
+                timeout=2
+            )
             assert result == b"\xab" * 160
         finally:
             loop.call_soon_threadsafe(loop.stop)
@@ -90,9 +90,9 @@ class TestQueueAPI:
         t.start()
         try:
             s.put_inbound(b"\xcd" * 160)
-            result = asyncio.run_coroutine_threadsafe(
-                s.inbound.get(), loop
-            ).result(timeout=2)
+            result = asyncio.run_coroutine_threadsafe(s.inbound.get(), loop).result(
+                timeout=2
+            )
             assert result == b"\xcd" * 160
         finally:
             loop.call_soon_threadsafe(loop.stop)
@@ -162,16 +162,16 @@ class TestMarkSync:
             send_thread.start()
             time.sleep(0.1)
             # consume the mark from queue and echo it back verbatim
-            mark = asyncio.run_coroutine_threadsafe(
-                s.get_pending_mark(), loop
-            ).result(timeout=2)
+            mark = asyncio.run_coroutine_threadsafe(s.get_pending_mark(), loop).result(
+                timeout=2
+            )
             assert mark.startswith("tts_complete__"), (
                 f"expected unique-suffixed mark, got {mark!r}"
             )
             suffix = mark.removeprefix("tts_complete__")
-            assert len(suffix) == 8 and all(
-                c in "0123456789abcdef" for c in suffix
-            ), f"expected 8 hex chars after '__', got {suffix!r}"
+            assert len(suffix) == 8 and all(c in "0123456789abcdef" for c in suffix), (
+                f"expected 8 hex chars after '__', got {suffix!r}"
+            )
             s.signal_mark_received(mark)
             send_thread.join(timeout=2)
             assert result[0] is True
@@ -527,7 +527,9 @@ class TestReset:
         mock_stt.stop = AsyncMock()
         s.stt = mock_stt
 
-        with patch("voice_runtime.session.asyncio.run_coroutine_threadsafe") as mock_rcts:
+        with patch(
+            "voice_runtime.session.asyncio.run_coroutine_threadsafe"
+        ) as mock_rcts:
             s.reset()
             mock_rcts.assert_called_once()
             # Verify the loop argument is correct

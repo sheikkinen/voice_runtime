@@ -68,15 +68,18 @@ class TestTwilioSmsTransport:
         mock_client = MagicMock()
         mock_client.messages.create.return_value = mock_msg
 
-        with patch.dict(
-            "os.environ",
-            {
-                "TWILIO_ACCOUNT_SID": "AC123",
-                "TWILIO_AUTH_TOKEN": "token",
-                "TWILIO_PHONE_NUMBER": "+15551234567",
-            },
-            clear=False,
-        ), patch("twilio.rest.Client", return_value=mock_client):
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "TWILIO_ACCOUNT_SID": "AC123",
+                    "TWILIO_AUTH_TOKEN": "token",
+                    "TWILIO_PHONE_NUMBER": "+15551234567",
+                },
+                clear=False,
+            ),
+            patch("twilio.rest.Client", return_value=mock_client),
+        ):
             result = send_sms("+358401234567", "Hei")
 
         assert result == {

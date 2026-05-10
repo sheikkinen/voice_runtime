@@ -29,9 +29,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SKIP_VALIDATION: bool = os.getenv(
-    "TWILIO_SKIP_SIGNATURE_VALIDATION", ""
-).lower() in ("1", "true", "yes")
+_SKIP_VALIDATION: bool = os.getenv("TWILIO_SKIP_SIGNATURE_VALIDATION", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 if _SKIP_VALIDATION:
     logger.warning(
@@ -59,16 +61,13 @@ def _validate_twilio_signature(websocket: WebSocket) -> bool:
         return True
 
     stream_url = os.getenv("VOICE_STREAM_URL", "")
-    ws_url = (
-        stream_url
-        .replace("https://", "wss://")
-        .replace("http://", "ws://")
-    )
+    ws_url = stream_url.replace("https://", "wss://").replace("http://", "ws://")
     full_url = f"{ws_url}/voice"
 
     signature = websocket.headers.get("x-twilio-signature", "")
 
     from twilio.request_validator import RequestValidator
+
     validator = RequestValidator(auth_token)
     return validator.validate(full_url, {}, signature)
 
@@ -157,8 +156,8 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
         send_task: asyncio.Task | None = None
         mark_task: asyncio.Task | None = None
         disconnect_task: asyncio.Task | None = None  # NC-154
-        clear_task: asyncio.Task | None = None       # NC-154
-        stt_task: asyncio.Task | None = None         # NC-154
+        clear_task: asyncio.Task | None = None  # NC-154
+        stt_task: asyncio.Task | None = None  # NC-154
 
         try:
             while True:
@@ -191,6 +190,7 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                         # NC-164: wrap with SttTee if secondary factory is set
                         if session.stt_secondary_factory is not None:
                             from voice_runtime.stt_tee import SttTee
+
                             secondary_stt = session.stt_secondary_factory()
                             session.stt = SttTee(primary_stt, secondary_stt)
                         else:

@@ -17,6 +17,7 @@ sys.path.insert(0, str(PROJECTS_DIR))
 def _azure_available() -> bool:
     try:
         import azure.cognitiveservices.speech  # noqa: F401
+
         return True
     except ImportError:
         return False

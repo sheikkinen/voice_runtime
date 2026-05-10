@@ -67,8 +67,7 @@ def initiate_outbound_call(phone: str) -> str:
 
     if not stream_url:
         raise RuntimeError(
-            "Set VOICE_STREAM_URL to a public WebSocket URL "
-            "(use ngrok for local dev)"
+            "Set VOICE_STREAM_URL to a public WebSocket URL (use ngrok for local dev)"
         )
     if not account_sid or not auth_token:
         raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")

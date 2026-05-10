@@ -104,7 +104,8 @@ class AzurePersistentStt:
         self._recognizer.start_continuous_recognition_async().get()
 
         self._feed_task = asyncio.create_task(
-            self._feed_audio(inbound_queue), name="azure_stt_feed",
+            self._feed_audio(inbound_queue),
+            name="azure_stt_feed",
         )
         logger.info("AzurePersistentStt started (lang=%s)", self._language_code)
 
@@ -140,7 +141,11 @@ class AzurePersistentStt:
                     break
                 frame_count += 1
                 if frame_count % 100 == 0:  # NC-258 1c: frame count logging
-                    logger.info("_feed_audio: %d frames fed (speaking=%s)", frame_count, self._speaking)
+                    logger.info(
+                        "_feed_audio: %d frames fed (speaking=%s)",
+                        frame_count,
+                        self._speaking,
+                    )
                 self._push_stream.write(frame)
         except asyncio.CancelledError:
             logger.info("_feed_audio: cancelled after %d frames", frame_count)
@@ -163,7 +168,8 @@ class AzurePersistentStt:
             logger.error("Azure STT canceled: %s — %s", reason, error_details)
             if self._loop:
                 asyncio.run_coroutine_threadsafe(
-                    self._reconnect_after_error(), self._loop,
+                    self._reconnect_after_error(),
+                    self._loop,
                 )
         elif reason == speechsdk.CancellationReason.EndOfStream:
             logger.info("Azure STT: end of stream (expected)")
@@ -187,27 +193,31 @@ class AzurePersistentStt:
             return
 
         delay = min(
-            self._RECONNECT_BASE_DELAY_S * (2 ** self._reconnect_attempt),
+            self._RECONNECT_BASE_DELAY_S * (2**self._reconnect_attempt),
             self._RECONNECT_MAX_DELAY_S,
         )
         delay *= 0.75 + random.random() * 0.5  # noqa: S311 jitter ±25%, not cryptographic
         logger.info(
             "Reconnecting Azure STT in %.1fs (attempt %d/%d)...",
-            delay, self._reconnect_attempt + 1, self._MAX_RECONNECT_ATTEMPTS,
+            delay,
+            self._reconnect_attempt + 1,
+            self._MAX_RECONNECT_ATTEMPTS,
         )
         await asyncio.sleep(delay)
 
         try:
             await self._reconnect()
             logger.info(
-                "Azure STT reconnected (attempt %d)", self._reconnect_attempt + 1,
+                "Azure STT reconnected (attempt %d)",
+                self._reconnect_attempt + 1,
             )
             self._reconnect_attempt = 0
         except Exception as exc:
             self._reconnect_attempt += 1
             logger.error(
                 "Azure STT reconnect failed (attempt %d): %s",
-                self._reconnect_attempt, exc,
+                self._reconnect_attempt,
+                exc,
             )
             await self._reconnect_after_error()  # recurse with incremented counter
 
