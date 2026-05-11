@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 - 2026-05-11
+
+### Changed
+
+- Release a fresh PyPI artifact for deployments that consume `voice-runtime` as a normal package dependency.
+
 ## 0.1.3 - 2026-05-11
 
 ### Fixed
