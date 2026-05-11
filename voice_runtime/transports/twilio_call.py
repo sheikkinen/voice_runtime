@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,29 @@ def build_stream_twiml(stream_url: str) -> str:
 
 # Alias for consumers that don't want 'twiml' in their import line
 build_stream_xml = build_stream_twiml
+
+
+def build_route_stream_xml(stream_url: str, route_token: str) -> str:
+    """Build XML that connects Twilio to an opaque routed stream endpoint.
+
+    Args:
+        stream_url: Public base URL. May be https:// or http:// — converted to
+            wss:// or ws://.
+        route_token: Opaque per-call route token appended under /voice/.
+
+    Returns:
+        XML string for Twilio Media Streams.
+    """
+    ws_base = (
+        stream_url.rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
+    )
+    safe_token = quote(route_token, safe="")
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="{ws_base}/voice/{safe_token}" />
+    </Connect>
+</Response>""".strip()
 
 
 def initiate_outbound_call(phone: str) -> str:

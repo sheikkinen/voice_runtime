@@ -45,6 +45,39 @@ class TestBuildStreamTwiml:
         assert build_stream_xml is build_stream_twiml
 
 
+@pytest.mark.req("NC-285")
+class TestBuildRouteStreamXml:
+    def test_https_converted_to_routed_wss(self):
+        from voice_runtime.transports.twilio_call import build_route_stream_xml
+
+        xml = build_route_stream_xml("https://example.ngrok.io", "route-123")
+
+        assert "wss://example.ngrok.io/voice/route-123" in xml
+        assert "https://" not in xml
+
+    def test_http_converted_to_routed_ws(self):
+        from voice_runtime.transports.twilio_call import build_route_stream_xml
+
+        xml = build_route_stream_xml("http://localhost:8080", "route-123")
+
+        assert "ws://localhost:8080/voice/route-123" in xml
+
+    def test_trailing_slash_does_not_duplicate_separator(self):
+        from voice_runtime.transports.twilio_call import build_route_stream_xml
+
+        xml = build_route_stream_xml("https://example.ngrok.io/", "route-123")
+
+        assert "wss://example.ngrok.io/voice/route-123" in xml
+        assert "example.ngrok.io//voice" not in xml
+
+    def test_route_token_is_percent_encoded(self):
+        from voice_runtime.transports.twilio_call import build_route_stream_xml
+
+        xml = build_route_stream_xml("https://example.ngrok.io", "a/b c?")
+
+        assert "wss://example.ngrok.io/voice/a%2Fb%20c%3F" in xml
+
+
 @pytest.mark.req("NC-155")
 class TestInitiateOutboundCall:
     def test_missing_stream_url_raises(self):
