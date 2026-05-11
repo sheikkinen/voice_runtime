@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 - 2026-05-11
+
+### Fixed
+
+- Mock calls now honor routed `<Stream url="...">` TwiML responses so supervisor-owned `/voice/{route_token}` WebSocket endpoints work in local E2E tests.
+- Mock text relay now posts sideband text to the matching routed `/test/inject/{route_token}` endpoint after call initiation.
+
 ## 0.1.2 - 2026-05-11
 
 ### Added
