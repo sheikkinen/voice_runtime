@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.2 - 2026-05-11
+
+### Added
+
+- `build_route_stream_xml()` for tokenized Twilio Media Streams endpoints owned by supervisors that route `/voice/{route_token}`.
+
+### Fixed
+
+- Keeps routed Twilio stream XML generation inside the `voice_runtime` transport boundary so application consumers do not need provider wire-protocol literals.
+
 ## 0.1.0 — 2026-05-10
 
 Initial public release under MIT license.
