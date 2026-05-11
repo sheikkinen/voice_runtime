@@ -228,18 +228,26 @@ Or better: the existing `test-marketing-e2e.sh` accepts a `--mock` flag:
 
 ## Acceptance Criteria
 
+- [x] Same `start-marketing.sh` used in both modes (skips ngrok when `TRANSPORT=mock`)
+- [x] Same `start-marketing-answerer.sh` used in both modes
+- [x] FSM engine runs as real subprocess, unaware of mock mode
+- [x] MockTts text is relayed to peer's MockStt via HTTP POST
+- [x] Mark synchronization preserved (MockTts calls `send_mark_and_wait`)
+- [x] FakeWsBridge echoes marks for protocol compliance
+- [x] No new test drivers or duplicate conversation logic
+- [x] Requires only `GOOGLE_API_KEY` (for LLM pipeline) in mock mode
 - [ ] `./test-marketing-e2e.sh --mock` runs the full marketing E2E without Twilio/ngrok/ElevenLabs
-- [ ] Same `start-marketing.sh` used in both modes (skips ngrok when `TRANSPORT=mock`)
-- [ ] Same `start-marketing-answerer.sh` used in both modes
-- [ ] FSM engine runs as real subprocess, unaware of mock mode
 - [ ] Coordinator log assertions identical to real mode
-- [ ] MockTts text is relayed to peer's MockStt via HTTP POST
-- [ ] Mark synchronization preserved (MockTts calls `send_mark_and_wait`)
-- [ ] FakeWsBridge echoes marks for protocol compliance
-- [ ] No new test drivers or duplicate conversation logic
-- [ ] Requires only `GOOGLE_API_KEY` (for LLM pipeline) in mock mode
 - [ ] Wall time < 60s in mock mode
 - [ ] `./test-marketing-e2e.sh` (no flag) continues to work unchanged with real Twilio
+
+## Amendment — 2026-05-11 Routed Supervisor Support
+
+`./test-marketing-e2e.sh --mock` failed with `websockets.exceptions.InvalidStatus: server rejected WebSocket connection: HTTP 403` after NC-280 supervisor routing. Root cause: `initiate_mock_call()` posted `/incoming` but ignored the returned TwiML and always connected `FakeWsBridge` to `/voice`. Supervisor mode exposes only `/voice/{route_token}` publicly, so plain `/voice` is rejected.
+
+Decision: mock transport must behave like Twilio and connect to the `<Stream url="...">` returned by `/incoming`. If the response has no parseable stream URL, it falls back to the historical `/voice` path for simple mock servers.
+
+Second finding: after the routed WebSocket connected, outcaller MockTts still posted text to the public supervisor `/test/inject`, which returns 404 because `/test/inject` belongs to the assigned worker. Decision: when the returned stream URL is `/voice/{route_token}`, `create_text_relay()` resolves the matching peer injection URL to `/test/inject/{route_token}`. Plain `/voice` still maps to the historical `/test/inject` path.
 
 ## Security Notes
 

@@ -101,6 +101,45 @@ class TestCreateTextRelay:
                 json={"text": "hello peer"},
             )
 
+    def test_relay_posts_to_routed_peer_after_mock_call(self):
+        from voice_runtime.transports.mock_bridge import (
+            _active_bridges,
+            _relay_url_by_peer,
+            create_text_relay,
+            initiate_mock_call,
+        )
+
+        twiml = """<Response><Connect>
+            <Stream url="ws://127.0.0.1:8765/voice/route-token-123" />
+        </Connect></Response>"""
+
+        with (
+            patch("voice_runtime.transports.mock_bridge.httpx.post") as mock_post,
+            patch("voice_runtime.transports.mock_bridge.httpx.Client") as mock_cls,
+            patch("voice_runtime.transports.mock_bridge.FakeWsBridge"),
+        ):
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.text = twiml
+            mock_post.return_value = mock_resp
+            mock_client = MagicMock()
+            mock_client_resp = MagicMock()
+            mock_client_resp.raise_for_status = MagicMock()
+            mock_client.post.return_value = mock_client_resp
+            mock_cls.return_value = mock_client
+
+            initiate_mock_call("http://127.0.0.1:8765")
+            relay = create_text_relay("http://127.0.0.1:8765")
+            relay("hello routed peer")
+
+            mock_client.post.assert_called_once_with(
+                "http://127.0.0.1:8765/test/inject/route-token-123",
+                json={"text": "hello routed peer"},
+            )
+
+            _active_bridges.clear()
+            _relay_url_by_peer.clear()
+
 
 class TestIsMockTransport:
     """Verify is_mock_transport() helper."""
@@ -158,6 +197,7 @@ class TestInitiateMockCall:
         ):
             mock_resp = MagicMock()
             mock_resp.raise_for_status = MagicMock()
+            mock_resp.text = ""
             mock_post.return_value = mock_resp
             mock_bridge = MagicMock()
             mock_bridge_cls.return_value = mock_bridge
@@ -171,4 +211,38 @@ class TestInitiateMockCall:
             mock_bridge.start.assert_called_once()
 
             # Cleanup
+            _active_bridges.clear()
+
+    def test_uses_stream_url_returned_by_incoming_twiml(self):
+        from voice_runtime.transports.mock_bridge import (
+            _active_bridges,
+            initiate_mock_call,
+        )
+
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="ws://127.0.0.1:8765/voice/route-token-123" />
+    </Connect>
+</Response>"""
+
+        with (
+            patch("voice_runtime.transports.mock_bridge.httpx.post") as mock_post,
+            patch(
+                "voice_runtime.transports.mock_bridge.FakeWsBridge"
+            ) as mock_bridge_cls,
+        ):
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status = MagicMock()
+            mock_resp.text = twiml
+            mock_post.return_value = mock_resp
+            mock_bridge = MagicMock()
+            mock_bridge_cls.return_value = mock_bridge
+
+            initiate_mock_call("http://127.0.0.1:8765")
+
+            mock_bridge.start.assert_called_once_with(
+                "ws://127.0.0.1:8765/voice/route-token-123"
+            )
+
             _active_bridges.clear()

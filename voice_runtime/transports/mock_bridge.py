@@ -14,11 +14,82 @@ import json
 import logging
 import os
 import threading
+from html.parser import HTMLParser
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+_relay_url_by_peer: dict[str, str] = {}
+
+
+class _StreamUrlParser(HTMLParser):
+    """Extract the first TwiML Stream URL attribute."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.stream_url = ""
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.stream_url or tag.lower() != "stream":
+            return
+        for name, value in attrs:
+            if name.lower() == "url" and value:
+                self.stream_url = value.strip()
+                return
+
+
+def _fallback_voice_ws_url(base_url: str) -> str:
+    """Return the default /voice WebSocket URL for a base HTTP URL."""
+    ws_base = base_url.replace("https://", "wss://").replace("http://", "ws://")
+    return f"{ws_base}/voice"
+
+
+def _normalise_peer_url(peer_url: str) -> str:
+    """Return a stable key for peer base URLs."""
+    return peer_url.rstrip("/")
+
+
+def _http_url_from_ws_url(ws_url: str) -> str:
+    parts = urlsplit(ws_url)
+    scheme = {"ws": "http", "wss": "https"}.get(parts.scheme, parts.scheme)
+    return urlunsplit((scheme, parts.netloc, parts.path, parts.query, parts.fragment))
+
+
+def _inject_url_from_stream_url(stream_url: str) -> str:
+    """Return the matching mock text-inject URL for a Twilio stream URL."""
+    http_url = _http_url_from_ws_url(stream_url)
+    parts = urlsplit(http_url)
+    route_prefix = "/voice/"
+    if parts.path.startswith(route_prefix):
+        route_token = parts.path.removeprefix(route_prefix)
+        path = f"/test/inject/{route_token}"
+    else:
+        path = "/test/inject"
+    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _stream_url_from_twiml(twiml: str | bytes, fallback_base_url: str) -> str:
+    """Extract the Twilio <Stream url="..."> target from TwiML.
+
+    Falls back to the historical /voice path when the response body is absent
+    or not parseable so existing tests and simple mock servers keep working.
+    """
+    fallback = _fallback_voice_ws_url(fallback_base_url)
+    if not isinstance(twiml, str | bytes):
+        return fallback
+    try:
+        parser = _StreamUrlParser()
+        parser.feed(twiml.decode() if isinstance(twiml, bytes) else twiml)
+    except Exception:
+        return fallback
+    stream_url = parser.stream_url
+    if not stream_url:
+        return fallback
+    return stream_url.replace("https://", "wss://").replace("http://", "ws://")
 
 
 def create_text_relay(peer_url: str):
@@ -31,9 +102,10 @@ def create_text_relay(peer_url: str):
         Callable[[str], None] suitable for MockTts(on_spoken=...).
     """
     client = httpx.Client(timeout=10.0)
+    peer_key = _normalise_peer_url(peer_url)
 
     def _relay(text: str) -> None:
-        url = f"{peer_url}/test/inject"
+        url = _relay_url_by_peer.get(peer_key, f"{peer_key}/test/inject")
         try:
             resp = client.post(url, json={"text": text})
             resp.raise_for_status()
@@ -184,19 +256,22 @@ def initiate_mock_call(target_url: str, caller_url: str | None = None) -> str:
     resp.raise_for_status()
     logger.info("Mock call initiated: call_sid=%s target=%s", call_sid, target_url)
 
-    # Connect FakeWsBridge to target's /voice WebSocket
-    target_ws = target_url.replace("https://", "wss://").replace("http://", "ws://")
+    # Connect FakeWsBridge to the stream URL returned by /incoming. This mirrors
+    # Twilio and supports routed supervisors that return /voice/{route_token}.
+    target_ws_url = _stream_url_from_twiml(resp.text, target_url)
+    _relay_url_by_peer[_normalise_peer_url(target_url)] = _inject_url_from_stream_url(
+        target_ws_url
+    )
     target_bridge = FakeWsBridge(call_sid=call_sid)
-    target_bridge.start(f"{target_ws}/voice")
+    target_bridge.start(target_ws_url)
     _active_bridges.append(target_bridge)
 
     # Connect FakeWsBridge to caller's own /voice WebSocket
     # This enables send_mark_and_wait on the caller side
     own_url = caller_url or os.getenv("VOICE_STREAM_URL", "")
     if own_url:
-        caller_ws = own_url.replace("https://", "wss://").replace("http://", "ws://")
         caller_bridge = FakeWsBridge(call_sid=call_sid)
-        caller_bridge.start(f"{caller_ws}/voice")
+        caller_bridge.start(_fallback_voice_ws_url(own_url))
         _active_bridges.append(caller_bridge)
     else:
         logger.warning("No caller_url or VOICE_STREAM_URL — caller marks won't echo")
