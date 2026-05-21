@@ -239,6 +239,36 @@ class TestLifecycle:
         s.signal_disconnected()  # must not raise
         assert s.is_disconnected
 
+    def test_signal_disconnected_fires_on_disconnected_callback(self):
+        """NC-299 AC-01: signal_disconnected fires on_disconnected when set."""
+        from voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        called = []
+        s.on_disconnected = lambda: called.append(True)
+        s.signal_disconnected()
+        assert called == [True]
+
+    def test_signal_disconnected_callback_fires_once(self):
+        """NC-299 AC-03: on_disconnected fires exactly once (idempotent)."""
+        from voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        call_count = []
+        s.on_disconnected = lambda: call_count.append(1)
+        s.signal_disconnected()
+        s.signal_disconnected()  # second call must not fire callback
+        assert len(call_count) == 1
+
+    def test_signal_disconnected_no_callback_when_none(self):
+        """NC-299: no error when on_disconnected is None (default)."""
+        from voice_runtime.session import VoiceSession
+
+        s = VoiceSession()
+        assert s.on_disconnected is None
+        s.signal_disconnected()  # must not raise
+        assert s.is_disconnected
+
     def test_signal_disconnected_unblocks_pending_marks(self):
         from voice_runtime.session import VoiceSession
 

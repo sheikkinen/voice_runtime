@@ -93,6 +93,7 @@ class VoiceSession:
         default=None, repr=False
     )
     on_stt_ready: Callable[[SttProvider], None] | None = field(default=None, repr=False)
+    on_disconnected: Callable[[], None] | None = field(default=None, repr=False)
 
     # --- Loop / lifecycle ---
 
@@ -255,6 +256,8 @@ class VoiceSession:
             self.put_inbound(None)
             for event in self._pending_marks.values():
                 event.set()
+            if self.on_disconnected is not None:
+                self.on_disconnected()
 
     @property
     def is_disconnected(self) -> bool:
