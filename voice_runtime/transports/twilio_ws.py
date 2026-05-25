@@ -29,28 +29,25 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SKIP_VALIDATION: bool = os.getenv("TWILIO_SKIP_SIGNATURE_VALIDATION", "").lower() in (
-    "1",
-    "true",
-    "yes",
-)
-
-if _SKIP_VALIDATION:
-    logger.warning(
-        "TWILIO_SKIP_SIGNATURE_VALIDATION is set — "
-        "Twilio signature validation DISABLED. NEVER set in production."
-    )
-
 
 def _validate_twilio_signature(websocket: WebSocket) -> bool:
     """Validate X-Twilio-Signature on the WebSocket upgrade request.
 
     Returns True if validation passes, False if rejected.
     Bypassed (returns True) when:
-    - _SKIP_VALIDATION is True (TWILIO_SKIP_SIGNATURE_VALIDATION env var)
+    - TWILIO_SKIP_SIGNATURE_VALIDATION env var is truthy
     - TWILIO_AUTH_TOKEN is not set (logs a warning)
     """
-    if _SKIP_VALIDATION:
+    skip = os.getenv("TWILIO_SKIP_SIGNATURE_VALIDATION", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    if skip:
+        logger.warning(
+            "TWILIO_SKIP_SIGNATURE_VALIDATION is set — "
+            "Twilio signature validation DISABLED. NEVER set in production."
+        )
         return True
 
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
