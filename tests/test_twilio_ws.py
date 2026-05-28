@@ -202,10 +202,6 @@ class TestSignatureValidation:
         monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
         monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
 
-        from voice_runtime.transports import twilio_ws
-
-        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
-
         from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
@@ -225,10 +221,6 @@ class TestSignatureValidation:
         monkeypatch.setenv("TWILIO_AUTH_TOKEN", _TEST_TOKEN)
         monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
         monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
-
-        from voice_runtime.transports import twilio_ws
-
-        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
 
         from voice_runtime.transports.twilio_ws import register_voice_websocket
 
@@ -252,10 +244,6 @@ class TestSignatureValidation:
         monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
         monkeypatch.delenv("TWILIO_SKIP_SIGNATURE_VALIDATION", raising=False)
 
-        from voice_runtime.transports import twilio_ws
-
-        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", False)
-
         from voice_runtime.transports.twilio_ws import register_voice_websocket
 
         app = FastAPI()
@@ -272,10 +260,7 @@ class TestSignatureValidation:
         """TWILIO_SKIP_SIGNATURE_VALIDATION=1 allows connection with no signature."""
         monkeypatch.setenv("TWILIO_AUTH_TOKEN", _TEST_TOKEN)
         monkeypatch.setenv("VOICE_STREAM_URL", _TEST_STREAM_URL)
-
-        from voice_runtime.transports import twilio_ws
-
-        monkeypatch.setattr(twilio_ws, "_SKIP_VALIDATION", True)
+        monkeypatch.setenv("TWILIO_SKIP_SIGNATURE_VALIDATION", "1")
 
         from voice_runtime.transports.twilio_ws import register_voice_websocket
 

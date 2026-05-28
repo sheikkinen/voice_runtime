@@ -38,12 +38,13 @@ class TestFatalErrorsExpansion:
     def test_reconnectable_error_triggers_reconnect(self, error_type: str) -> None:
         """Reconnectable errors should schedule _reconnect_after_error."""
         session = PersistentSttSession(api_key="test")
+        loop = asyncio.new_event_loop()
         session._loop = MagicMock()
         session._inbound_queue = asyncio.Queue()
         session._reconnect_attempt = 0
 
         with patch.object(session, "_reconnect_after_error") as mock_reconnect:
-            future = asyncio.Future()
+            future = loop.create_future()
             future.set_result(None)
             session._loop.call_soon_threadsafe = MagicMock()
             # run_coroutine_threadsafe returns a future
