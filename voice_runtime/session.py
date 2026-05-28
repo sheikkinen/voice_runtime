@@ -84,6 +84,9 @@ class VoiceSession:
     # --- Optional audio monitoring ---
     _mixer: Any = field(default=None, repr=False)
 
+    # --- Generation counter (NC-305a) ---
+    _call_generation: int = field(default=0, repr=False)
+
     # --- Transport intent (NC-154) ---
     _disconnect_requested: asyncio.Event | None = field(default=None, repr=False)
     _clear_queue: asyncio.Queue[str] | None = field(default=None, repr=False)
@@ -265,6 +268,9 @@ class VoiceSession:
 
     def reset(self) -> None:
         """Reset per-call state for session reuse (multi-call servers)."""
+        # NC-305a: bump generation FIRST so stale threads see the new value
+        # before any state is cleared.
+        self._call_generation += 1
         # Unblock threads waiting on marks BEFORE clearing state.
         # Order matters: _disconnected must stay True while events fire
         # so stale commands see is_disconnected=True and abort.
@@ -318,14 +324,25 @@ class VoiceSession:
 
     # --- Transport intent (NC-154) ---
 
-    def request_disconnect(self) -> None:
+    def request_disconnect(self, generation: int | None = None) -> None:
         """Consumer requests call termination. Thread-safe.
+
+        Args:
+            generation: If provided, request is rejected when it doesn't
+                match current _call_generation (NC-305a stale thread guard).
 
         Transport watches _disconnect_requested and closes in its own way
         (Twilio: websocket.close, SIP: BYE, etc.).
         """
         if self._loop is None or self._disconnect_requested is None:
             logger.debug("request_disconnect: prerequisites not met — skipping")
+            return
+        if generation is not None and generation != self._call_generation:
+            logger.warning(
+                "Stale request_disconnect ignored gen=%s current=%s",
+                generation,
+                self._call_generation,
+            )
             return
         self._loop.call_soon_threadsafe(self._disconnect_requested.set)
         logger.info("Disconnect requested — transport will terminate call")
