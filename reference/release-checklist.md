@@ -40,6 +40,30 @@ CI picks up the tag, runs tests on Python 3.11 + 3.12, builds, validates tag == 
 
 ---
 
+## Post-publish: bump consumer pins
+
+After CI confirms the publish succeeded (`gh run list --limit 1`), bump
+the pinned version in every consumer repo. For **ninchat_voice**:
+
+```bash
+cd ../ninchat_voice
+# Update exact pin (deploy) and minimum pin (dev)
+sed -i '' 's/voice-runtime\[azure,elevenlabs\]==OLD/voice-runtime[azure,elevenlabs]==NEW/' requirements-deploy.txt
+sed -i '' 's/voice-runtime\[azure,elevenlabs\]>=OLD/voice-runtime[azure,elevenlabs]>=NEW/' pyproject.toml
+# Update version assertion in deploy test
+# tests/test_nc288_supervisor_call_isolation.py
+pytest tests/ -q --no-cov
+git add -A && git commit -m "chore(deps): bump voice-runtime to NEW"
+```
+
+**Why this matters:** `pip install -e ../voice_runtime` locally shadows
+the PyPI pin. Code that uses new API will pass locally but crash in
+production if the deploy pin still references the old version. The
+failure mode is silent — daemon threads die without structured logging.
+See NC-315 for the incident record.
+
+---
+
 ## Version scheme
 
 `MAJOR.MINOR.PATCH` — semver:
