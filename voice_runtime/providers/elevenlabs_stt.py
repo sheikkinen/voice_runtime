@@ -54,6 +54,7 @@ class PersistentSttSession:
         self.on_recognizing: Callable[[str], None] | None = None
         self.on_error: Callable[[str], None] | None = None  # NC-258
         self._reconnect_attempt: int = 0  # NC-170 Fix 2: backoff counter
+        self._reconnecting: bool = False  # NC-340: swap window guard
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open Scribe connection and begin feeding audio."""
@@ -71,43 +72,67 @@ class PersistentSttSession:
         logger.info("PersistentSttSession started")
 
     async def _connect(self) -> None:
-        """Open (or re-open) the Scribe WebSocket."""
+        """Open (or re-open) the Scribe WebSocket.
+
+        NC-340: guards the close→connect swap with ``_reconnecting`` so the
+        feeder treats sends during the swap as transient, and ensures the feed
+        task is alive before returning so no reconnect path leaves STT deaf.
+        """
         from elevenlabs import ElevenLabs
         from elevenlabs.realtime.scribe import AudioFormat, CommitStrategy
 
-        if self._stt is not None:
-            with contextlib.suppress(Exception):
-                await self._stt.close()
+        self._reconnecting = True
+        try:
+            if self._stt is not None:
+                with contextlib.suppress(Exception):
+                    await self._stt.close()
 
-        client = ElevenLabs(api_key=self._api_key)
-        options = {
-            "model_id": STT_MODEL_ID,
-            "audio_format": AudioFormat.ULAW_8000,
-            "sample_rate": 8000,
-            "commit_strategy": CommitStrategy.VAD,
-            "vad_threshold": 0.5,
-            "vad_silence_threshold_secs": 1.5,
-            "min_speech_duration_ms": 300,
-            "language_code": self._language_code,
-        }
-        self._stt = await client.speech_to_text.realtime.connect(options)
+            client = ElevenLabs(api_key=self._api_key)
+            options = {
+                "model_id": STT_MODEL_ID,
+                "audio_format": AudioFormat.ULAW_8000,
+                "sample_rate": 8000,
+                "commit_strategy": CommitStrategy.VAD,
+                "vad_threshold": 0.5,
+                "vad_silence_threshold_secs": 1.5,
+                "min_speech_duration_ms": 300,
+                "language_code": self._language_code,
+            }
+            self._stt = await client.speech_to_text.realtime.connect(options)
 
-        self._stt.on("committed_transcript", self._on_committed)
-        self._stt.on("partial_transcript", self._on_partial)
-        self._stt.on("session_time_limit_exceeded", self._on_time_limit)
-        for ev in (
-            "error",
-            "auth_error",
-            "quota_exceeded",
-            "rate_limited",
-            "queue_overflow",
-            "resource_exhausted",
-            "input_error",
-            "transcriber_error",
-            "chunk_size_exceeded",
+            self._stt.on("committed_transcript", self._on_committed)
+            self._stt.on("partial_transcript", self._on_partial)
+            self._stt.on("session_time_limit_exceeded", self._on_time_limit)
+            for ev in (
+                "error",
+                "auth_error",
+                "quota_exceeded",
+                "rate_limited",
+                "queue_overflow",
+                "resource_exhausted",
+                "input_error",
+                "transcriber_error",
+                "chunk_size_exceeded",
+            ):
+                self._stt.on(ev, self._on_error)
+            logger.info("Scribe WebSocket connected")
+        finally:
+            self._reconnecting = False
+        self._ensure_feed_task()
+
+    def _ensure_feed_task(self) -> None:
+        """Recreate the audio feed task if it has finished (NC-340).
+
+        Every reconnect (long-TTS or fatal-error) must leave a live feeder; the
+        single ``stt_feed`` task is otherwise an unrepaired single point of
+        failure that causes permanent STT deafness.
+        """
+        if self._inbound_queue is not None and (
+            self._feed_task is None or self._feed_task.done()
         ):
-            self._stt.on(ev, self._on_error)
-        logger.info("Scribe WebSocket connected")
+            self._feed_task = asyncio.create_task(
+                self._feed_audio(self._inbound_queue), name="stt_feed"
+            )
 
     async def stop(self) -> None:
         """Cancel feed task and close Scribe connection."""
@@ -225,6 +250,12 @@ class PersistentSttSession:
                     await self._stt.send({"audio_base_64": audio_b64})
                     consecutive_failures = 0
                 except Exception:
+                    # NC-340: failures during a deliberate reconnect (socket
+                    # swap) are transient — do not count them toward escalation,
+                    # or the feeder breaks permanently on every long-TTS reconnect.
+                    if self._reconnecting:
+                        await asyncio.sleep(0.1)
+                        continue
                     consecutive_failures += 1
                     if consecutive_failures >= self._MAX_CONSECUTIVE_SEND_FAILURES:
                         logger.error(

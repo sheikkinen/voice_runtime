@@ -1,6 +1,6 @@
 # NC-340 — STT feed loop must survive a reconnect
 
-**Status:** Approved with required revisions (R-1..R-3, D-1..D-2 folded below; see `NC-340-stt-feed-survives-reconnect.judgement.md`)
+**Status:** Enforced (2026-06-12) — RED `ecb2db9`, GREEN follows; R-1..R-3, D-1..D-2 folded below; see `NC-340-stt-feed-survives-reconnect.judgement.md`
 **Judged:** 2026-06-12
 **Repo:** sheikkinen/voice_runtime
 **Component:** `voice_runtime/providers/elevenlabs_stt.py` — `PersistentSttSession`
@@ -191,3 +191,31 @@ only the *connect* primitive they share is hardened.
 `tt-test-plan` enforces short persona-caller turns (< 10 s of speech) in
 `app/graphs/prompts/caller_persona.yaml` so the long-TTS reconnect never fires.
 This FR removes the underlying race so the mitigation is no longer load-bearing.
+
+---
+
+## Implementation Status (2026-06-12)
+
+Enforced in `voice_runtime/providers/elevenlabs_stt.py`:
+
+- `__init__`: added `self._reconnecting = False`.
+- `_connect()`: wraps the close→connect swap in `try/finally` setting
+  `_reconnecting`, and calls a new `_ensure_feed_task()` before returning, so
+  every caller (long-TTS, fatal-error, initial `start()`) restores a live feeder
+  (R-3 — guard in one place, no call-site changes; R-2 — boolean flag, no lock).
+- `_feed_audio()`: a `send()` failure while `_reconnecting` is set is transient —
+  `await asyncio.sleep(0.1)` and `continue`, not counted toward
+  `_MAX_CONSECUTIVE_SEND_FAILURES` (D-1 — resumption, the in-flight frame is
+  dropped; not zero-loss).
+
+Tests (`tests/test_nc340_stt_feed_survives_reconnect.py`, `@pytest.mark.req("NC-340")`):
+
+- `test_long_tts_reconnect_resumes_feeding` — AC-5 witness (R-1): reproduces the
+  race; post-reconnect frames reach the new socket. RED on `main`, GREEN after.
+- `test_send_failures_during_reconnect_do_not_break_feeder` — AC-2.
+- `test_fatal_error_reconnect_recreates_feeder` — AC-3.
+- `test_reconnect_exhaustion_still_fires_on_error` — AC-4 guard (unchanged
+  bounded-retry + `on_error` contract).
+
+RED commit `ecb2db9` (3 failing, 1 guard passing). After fix: 4 passed; full
+suite 291 passed, 1 skipped, no regression.
