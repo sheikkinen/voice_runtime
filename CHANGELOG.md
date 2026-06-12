@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 - 2026-06-12
+
+### Fixed
+
+- **NC-340**: STT audio feed loop now survives a reconnect. Previously an agent TTS turn longer than 10s triggered a Scribe reconnect that raced the audio feeder; the feeder hit consecutive `send()` failures on the torn-down socket, broke permanently, and was never restarted — leaving STT permanently deaf for the rest of the call. `_connect()` now guards the socket swap with a `_reconnecting` flag and ensures the feed task is alive before returning; `_feed_audio` treats send failures during a deliberate reconnect as transient.
+
 ## 0.1.4 - 2026-05-11
 
 ### Changed
