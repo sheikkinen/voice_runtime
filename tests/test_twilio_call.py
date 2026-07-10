@@ -156,3 +156,35 @@ class TestInitiateOutboundCall:
 
         assert sid == "CA123"
         mock_client.calls.create.assert_called_once()
+
+
+class TestHangupCall:
+    """ninchat_voice NC-362: supervisor-side reap teardown rides this seam."""
+
+    def test_hangup_updates_call_to_completed(self):
+        from voice_runtime.transports.twilio_call import hangup_call
+
+        mock_client = MagicMock()
+        with (
+            patch.dict(
+                "os.environ",
+                {"TWILIO_ACCOUNT_SID": "AC1", "TWILIO_AUTH_TOKEN": "token"},
+                clear=False,
+            ),
+            patch("twilio.rest.Client", return_value=mock_client),
+        ):
+            hangup_call("CA-reaped")
+
+        mock_client.calls.assert_called_once_with("CA-reaped")
+        mock_client.calls.return_value.update.assert_called_once_with(
+            status="completed"
+        )
+
+    def test_hangup_without_credentials_raises(self):
+        from voice_runtime.transports.twilio_call import hangup_call
+
+        with (
+            patch.dict("os.environ", {"TWILIO_ACCOUNT_SID": "", "TWILIO_AUTH_TOKEN": ""}, clear=False),
+            pytest.raises(RuntimeError, match="TWILIO_ACCOUNT_SID"),
+        ):
+            hangup_call("CA-x")

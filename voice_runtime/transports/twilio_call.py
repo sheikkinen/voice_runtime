@@ -109,3 +109,22 @@ def initiate_outbound_call(phone: str) -> str:
     )
     logger.info("Call initiated: call_sid=%s", call.sid)
     return call.sid
+
+
+def hangup_call(call_sid: str) -> None:
+    """End a live call at the Twilio REST boundary (ninchat_voice NC-362).
+
+    Works regardless of the worker/session state — Twilio completes the
+    call and closes the media WS from its side.
+
+    Raises:
+        RuntimeError: If Twilio credentials are missing.
+    """
+    from twilio.rest import Client
+
+    account_sid, auth_token, _phone_number, _stream_url = _get_twilio_env()
+    if not account_sid or not auth_token:
+        raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
+
+    Client(account_sid, auth_token).calls(call_sid).update(status="completed")
+    logger.info("Call hangup issued: call_sid=%s", call_sid)
