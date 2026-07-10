@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.9 - 2026-07-10
+
+### Added
+
+- **NC-362** (ninchat_voice): `hangup_call(call_sid)` in `transports.twilio_call` — REST-boundary call termination. The consumer's supervisor reaper must end a stuck call without routing through the wedged worker; Twilio completes the call and closes the media WS from its side. Raises `RuntimeError` without credentials.
+
 ## 0.1.8 - 2026-06-12
 
 ### Fixed
