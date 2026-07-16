@@ -128,3 +128,33 @@ def hangup_call(call_sid: str) -> None:
 
     Client(account_sid, auth_token).calls(call_sid).update(status="completed")
     logger.info("Call hangup issued: call_sid=%s", call_sid)
+
+
+def list_recent_calls(lookback_s: float = 3600.0) -> list[dict]:
+    """READ-ONLY CDR fetch for reconciliation (ninchat_voice NC-395).
+
+    Returns [{"call_sid", "status", "start_time" (epoch)}] for inbound
+    calls to our number within the lookback window. Returns [] when
+    credentials are absent — reconciliation is a no-op off-fly.
+    """
+    from datetime import UTC, datetime
+
+    from twilio.rest import Client
+
+    account_sid, auth_token, phone_number, _stream_url = _get_twilio_env()
+    if not account_sid or not auth_token:
+        return []
+    import time as _time
+
+    after = datetime.fromtimestamp(_time.time() - lookback_s, tz=UTC)
+    calls = Client(account_sid, auth_token).calls.list(
+        to=phone_number or None, start_time_after=after, limit=200
+    )
+    return [
+        {
+            "call_sid": c.sid,
+            "status": str(c.status or ""),
+            "start_time": c.start_time.timestamp() if c.start_time else 0,
+        }
+        for c in calls
+    ]
