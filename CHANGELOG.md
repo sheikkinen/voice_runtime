@@ -1,6 +1,13 @@
 # Changelog
 
+## 0.1.10 - 2026-08-06
+
+### Added
+
+- **NC-395/NC-428** (ninchat_voice): `list_recent_calls(lookback_s)` in `transports.twilio_call` — read-only CDR fetch for the call-record reconciler. Returns `[{"call_sid", "status", "start_time"}]` for inbound calls to our number within the lookback window; `[]` without credentials. Ships the function the ninchat_voice reconciler has imported since NC-395 (the consumer merged against an unreleased checkout; every deployment logged an ImportError per tick — NC-428).
+
 ## 0.1.9 - 2026-07-10
+
 
 ### Added
 
