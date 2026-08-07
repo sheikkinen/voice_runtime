@@ -108,9 +108,9 @@ class TestSingleConstructionBoundary:
             if path.name != _HELPER_FILENAME
             and "from twilio.rest import Client" in path.read_text()
         ]
-        assert offenders == [], (
-            f"direct twilio.rest.Client import outside {_HELPER_FILENAME}: {offenders}"
-        )
+        assert (
+            offenders == []
+        ), f"direct twilio.rest.Client import outside {_HELPER_FILENAME}: {offenders}"
 
     def test_helper_exists_and_is_the_construction_point(self):
         from voice_runtime.transports._twilio_client import build_twilio_client
@@ -141,8 +141,8 @@ class TestRequestTimeoutPropagates:
         from voice_runtime.transports.twilio_call import hangup_call
 
         with patch("twilio.rest.Client") as client_mock:
-            client_mock.return_value.calls.return_value.update.side_effect = ReadTimeout(
-                "boom"
+            client_mock.return_value.calls.return_value.update.side_effect = (
+                ReadTimeout("boom")
             )
             with pytest.raises(ReadTimeout):
                 hangup_call("CA123")
