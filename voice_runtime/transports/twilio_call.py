@@ -10,6 +10,8 @@ import logging
 import os
 from urllib.parse import quote
 
+from ._twilio_client import build_twilio_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,8 +87,6 @@ def initiate_outbound_call(phone: str) -> str:
     Raises:
         RuntimeError: If VOICE_STREAM_URL or Twilio credentials are missing.
     """
-    from twilio.rest import Client
-
     account_sid, auth_token, phone_number, stream_url = _get_twilio_env()
 
     if not stream_url:
@@ -101,7 +101,7 @@ def initiate_outbound_call(phone: str) -> str:
     twiml = build_stream_twiml(stream_url)
     logger.info("Initiating outbound call to %s", phone)
 
-    client = Client(account_sid, auth_token)
+    client = build_twilio_client(account_sid, auth_token)
     call = client.calls.create(
         to=phone,
         from_=phone_number,
@@ -120,13 +120,13 @@ def hangup_call(call_sid: str) -> None:
     Raises:
         RuntimeError: If Twilio credentials are missing.
     """
-    from twilio.rest import Client
-
     account_sid, auth_token, _phone_number, _stream_url = _get_twilio_env()
     if not account_sid or not auth_token:
         raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
 
-    Client(account_sid, auth_token).calls(call_sid).update(status="completed")
+    build_twilio_client(account_sid, auth_token).calls(call_sid).update(
+        status="completed"
+    )
     logger.info("Call hangup issued: call_sid=%s", call_sid)
 
 
@@ -139,15 +139,13 @@ def list_recent_calls(lookback_s: float = 3600.0) -> list[dict]:
     """
     from datetime import UTC, datetime
 
-    from twilio.rest import Client
-
     account_sid, auth_token, phone_number, _stream_url = _get_twilio_env()
     if not account_sid or not auth_token:
         return []
     import time as _time
 
     after = datetime.fromtimestamp(_time.time() - lookback_s, tz=UTC)
-    calls = Client(account_sid, auth_token).calls.list(
+    calls = build_twilio_client(account_sid, auth_token).calls.list(
         to=phone_number or None, start_time_after=after, limit=200
     )
     return [
