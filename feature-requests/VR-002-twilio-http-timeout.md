@@ -1,8 +1,9 @@
 # VR-002 — Bound the Twilio REST HTTP timeout
 
-**Status:** APPROVED WITH REVISIONS (2026-08-07) — R-1..R-4 folded below; C-1..C-5 in
-`VR-002-twilio-http-timeout.judgement.md` gate enforcement
-**Judged:** 2026-08-07
+**Status:** ENFORCED (2026-08-07) — RED `1c75acf` (SKIP=pytest), GREEN `ca04627`,
+format `329c251`; docs `3a786d0`. Suite 261 passed / 48 skipped; pre-commit all
+gates pass. C-1..C-5 honoured; see `VR-002-twilio-http-timeout.judgement.md`
+**Judged:** 2026-08-07 — APPROVED WITH REVISIONS; R-1..R-4 folded below
 **Repo:** sheikkinen/voice_runtime — GitHub issue [#2](https://github.com/sheikkinen/voice_runtime/issues/2)
 **Component:** `voice_runtime/transports/twilio_sms.py`, `voice_runtime/transports/twilio_call.py`
 **Version observed:** 0.1.10
@@ -188,3 +189,35 @@ None expected. Do not introduce retry, backoff, or async wrapping in this FR.
   `0.1.10`, VBOT-76 AC-10), ninchat_voice (currently `0.1.9`, already one release
   behind), outcaller. Each needs its own authority in its own repo.
 - No consumer code change required — env var is optional.
+
+---
+
+## Implementation Record (2026-08-07)
+
+Landed as specified: `voice_runtime/transports/_twilio_client.py` (26 lines) with
+`build_twilio_client(account_sid, auth_token)`; all four call sites migrated;
+`tests/test_vr002_twilio_http_timeout.py` — 15 tests, 12 RED before the fix.
+
+Decisions taken during enforcement:
+
+- **Helper imported at module level, twilio imported inside it.** The call sites
+  now do `from ._twilio_client import build_twilio_client` at module scope; the
+  `twilio.rest` / `twilio.http.http_client` imports stay inside the helper
+  function, so AC-6's optional-import guarantee holds (asserted by an AST test
+  over the whole `transports/` package).
+- **AC-2 invalid-value behaviour is `float()`'s own `ValueError`** — no bespoke
+  validation code, so there is no silent-fallback path to review.
+- **AC-4 was already satisfied on `main`** (2 of 15 tests passed pre-fix). Kept as
+  regression guards: they pin that adding the bound did not introduce swallowing.
+- **Out-of-scope reformatting reverted.** `ruff-format` (pinned v0.8.6) also
+  rewrote `tests/test_nc340_*.py` and `tests/test_twilio_call.py`; those reverts
+  keep the diff inside the frozen scope. Pre-existing ruff-version drift, not
+  this FR's business.
+- **Toolchain gap found:** the repo had no `.venv` and pre-commit was not
+  installed in this checkout. Created `.venv` (git-ignored) with
+  `.[dev]` + `pytest-cov` + `elevenlabs` + `radon` + `pre-commit`; `pytest-cov` is
+  required because the hook's `--no-cov` neutralizes the parent yamlgraph
+  `addopts`, and `elevenlabs` because 11 tests import it. Neither is declared in
+  the `dev` extra — worth a follow-up FR, not fixed here (C-3).
+
+Not done under this FR (C-4): version bump, PyPI publish, consumer pin bumps.

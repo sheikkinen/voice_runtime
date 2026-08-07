@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **VR-002** (issue #2): Twilio REST requests are now bounded by an explicit HTTP timeout. `send_sms`, `initiate_outbound_call`, `hangup_call`, and `list_recent_calls` build their client through `transports/_twilio_client.build_twilio_client`, which attaches a `TwilioHttpClient` with `TWILIO_HTTP_TIMEOUT` seconds (default `15`). The SDK's default client applies no request timeout, so a network path that silently drops packets blocked a synchronous call-path request for the OS TCP timeout (~2 min) — on the consumer's call-teardown path that freezes worker teardown and starves the pool. Credential pre-checks are unchanged.
+
 ## 0.1.10 - 2026-08-06
 
 ### Added
