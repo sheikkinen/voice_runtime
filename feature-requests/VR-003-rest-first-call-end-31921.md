@@ -2,7 +2,7 @@
 
 **Priority:** HIGH (blocks clean alerting for the Tervola pilot watch, VBOT-88)
 **Type:** Bug fix / behavior change
-**Status:** Judged — APPROVED WITH REVISIONS (2026-08-13, see `.judgement.md`); R-1–R-5 folded
+**Status:** Enforced 2026-08-13 (RED c419744, GREEN f27567f) — AC-01–AC-08 met; AC-09 pending post-release
 **Effort:** 0.5 day
 **Requested:** 2026-08-13
 **Downstream:** ninchat_voice / csap (VBOT-88 correlator alerting, Tervola release plan)
@@ -136,3 +136,21 @@ AC-09 is recorded here after csap picks the release up independently.
   (pilot watch)
 - NC-362 (csap): REST hangup precedent at the reap boundary
 - VR-002: Twilio HTTP timeout discipline
+
+## Implementation record (2026-08-13)
+
+- RED `c419744`: 10 witnesses in
+  `tests/test_vr003_rest_first_call_end_31921.py` — 6 failed on the
+  server-close-first path, 4 no-regression witnesses (legacy path,
+  error propagation) passed.
+- GREEN: `rest_hangup_first()` in `twilio_ws.py` (REST via
+  `asyncio.to_thread(hangup_call, call_sid)`, then 0.05 s-polled bounded
+  wait on `session.is_disconnected`, `REST_CLOSE_WAIT_S = 5.0`);
+  terminal predicate (404 / 400+21220 → success) inside `hangup_call`.
+- Deviation: `TwilioRestException` imported lazily inside `hangup_call` —
+  the VR-002 witness `test_no_module_level_twilio_imports` forbids
+  module-level twilio imports in transports (caught by the full-suite
+  run, one-line fix).
+- Full suite: 271 passed, 48 skipped, 0 failed.
+- AC-09 open: record csap TEST zero-31921 observation after a consumer
+  pins the release.

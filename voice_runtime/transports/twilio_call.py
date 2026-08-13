@@ -117,6 +117,10 @@ def hangup_call(call_sid: str) -> None:
     Works regardless of the worker/session state — Twilio completes the
     call and closes the media WS from its side.
 
+    Idempotent (VR-003): racing a simultaneous caller hangup must not
+    raise — 404 (call gone) and 400 with Twilio error 21220 (call not
+    in-progress) are success. Anything else propagates.
+
     Raises:
         RuntimeError: If Twilio credentials are missing.
     """
@@ -124,9 +128,22 @@ def hangup_call(call_sid: str) -> None:
     if not account_sid or not auth_token:
         raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
 
-    build_twilio_client(account_sid, auth_token).calls(call_sid).update(
-        status="completed"
-    )
+    from twilio.base.exceptions import TwilioRestException
+
+    try:
+        build_twilio_client(account_sid, auth_token).calls(call_sid).update(
+            status="completed"
+        )
+    except TwilioRestException as exc:
+        if exc.status == 404 or (exc.status == 400 and exc.code == 21220):
+            logger.info(
+                "Call already terminal: call_sid=%s (status=%s code=%s)",
+                call_sid,
+                exc.status,
+                exc.code,
+            )
+            return
+        raise
     logger.info("Call hangup issued: call_sid=%s", call_sid)
 
 

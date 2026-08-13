@@ -24,10 +24,15 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
+from voice_runtime.transports.twilio_call import hangup_call
+
 if TYPE_CHECKING:
     from voice_runtime.session import VoiceSession
 
 logger = logging.getLogger(__name__)
+
+# VR-003: bounded wait for the Twilio-side WS close after a REST hangup
+REST_CLOSE_WAIT_S = 5.0
 
 
 def _validate_twilio_signature(websocket: WebSocket) -> bool:
@@ -127,11 +132,47 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
                     session.signal_disconnected()  # NC-260 Gap B
                     break
 
+        async def rest_hangup_first() -> bool:
+            """VR-003: end the call at the REST boundary so Twilio closes the
+            media WS from ITS side — a server-side close(1000) is logged by
+            Twilio as error 31921 on every bot-ended call.
+
+            Returns True when the Twilio-side close was observed and no
+            server-side close is needed.
+            """
+            call_sid = session.call_sid
+            if not call_sid:
+                return False
+            if not (os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")):
+                return False
+            try:
+                # Blocking SDK call — must not stall the media event loop
+                await asyncio.to_thread(hangup_call, call_sid)
+            except Exception as exc:
+                logger.warning(
+                    "REST hangup failed (%s) — falling back to WS close", exc
+                )
+                return False
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + REST_CLOSE_WAIT_S
+            while loop.time() < deadline:
+                if session.is_disconnected:
+                    logger.info("Twilio closed the stream after REST hangup")
+                    return True
+                await asyncio.sleep(0.05)
+            logger.warning(
+                "Twilio-side close not observed within %.1fs — falling back",
+                REST_CLOSE_WAIT_S,
+            )
+            return False
+
         async def watch_disconnect() -> None:
-            """NC-154: Watch for session.request_disconnect() and close WebSocket."""
+            """NC-154/VR-003: REST-first call end; WS close(1000) as fallback."""
             if session._disconnect_requested is None:
                 return
             await session._disconnect_requested.wait()
+            if await rest_hangup_first():
+                return
             logger.info("Disconnect requested — closing WebSocket to end call")
             with contextlib.suppress(Exception):
                 await websocket.close(1000)

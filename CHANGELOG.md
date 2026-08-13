@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **VR-003**: Bot-initiated call teardown is now REST-first. `watch_disconnect` issues `hangup_call(call_sid)` off-loop (`asyncio.to_thread`) so Twilio completes the call and closes the media WS from ITS side, then waits up to 5 s for the Twilio-side close before falling back to the previous server-side `close(1000)`. In bidirectional `<Connect><Stream>` any server-side WS close is logged by Twilio as error 31921 — every bot-ended call produced one (csap VBOT-87: 20/20), making a genuine mid-call stream crash indistinguishable from a normal call end. `hangup_call` is now idempotent: 404 or 400+21220 (call already terminal, caller hung up first) is success; other REST errors propagate to the WS-close fallback. No credentials / no call SID → legacy path unchanged.
+
 ## 0.1.11 - 2026-08-07
 
 ### Fixed
