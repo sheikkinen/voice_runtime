@@ -2,7 +2,7 @@
 
 **Priority:** HIGH (blocks clean alerting for the Tervola pilot watch, VBOT-88)
 **Type:** Bug fix / behavior change
-**Status:** Enforced 2026-08-13 (RED c419744, GREEN f27567f) — AC-01–AC-08 met; AC-09 pending post-release
+**Status:** Enforced 2026-08-13 (RED c419744, GREEN fc6c85a) — AC-01–AC-08 met; AC-09 pending post-release
 **Effort:** 0.5 day
 **Requested:** 2026-08-13
 **Downstream:** ninchat_voice / csap (VBOT-88 correlator alerting, Tervola release plan)
