@@ -2,7 +2,7 @@
 
 **Priority:** HIGH (sole remaining cause of harness `No crash` failures on happy-path runs; also loses the first caller utterance)
 **Type:** Bug fix
-**Status:** ENFORCED 2026-08-20 (RED dd760a6, GREEN pending release; judged Approved with revisions, R-1–R-6 folded in)
+**Status:** ENFORCED + RELEASED 0.1.13 (2026-08-20; RED dd760a6, GREEN 051d03c, release 004ffcf/v0.1.13, PyPI live; judged Approved with revisions, R-1–R-6 folded in). Open: AC-08 post-release field observation after downstream pins.
 **Effort:** 0.5 day
 **Requested:** 2026-08-20
 **Downstream:** csap-black-box-tests FR-003/FR-005 (harness-side teardown fixed there; this is the remaining upstream half), csap-black `docs/known-bug-voice-runtime-duplicate-feed-task.md` (open since 0.1.8), csap case studies 2026-08-20-hp35-CA19b1f876… (Finding 3) and 2026-08-20-hp93-CAc8b7f44b… (residual section)
