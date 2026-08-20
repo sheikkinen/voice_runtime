@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import contextlib
 import logging
 import os
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -55,20 +56,37 @@ class PersistentSttSession:
         self.on_error: Callable[[str], None] | None = None  # NC-258
         self._reconnect_attempt: int = 0  # NC-170 Fix 2: backoff counter
         self._reconnecting: bool = False  # NC-340: swap window guard
+        self._stopping: bool = False  # VR-005: no new session work after stop
+        # VR-005: handles for reconnect work scheduled on the loop
+        self._owned_futures: set[concurrent.futures.Future[Any]] = set()
+
+    def _schedule_owned(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Schedule session work on the loop, retaining the handle (VR-005).
+
+        Every ``run_coroutine_threadsafe`` result is session-owned so
+        ``stop()`` can cancel and await it — dropped futures were the D-B
+        orphans.
+        """
+        if self._stopping or not self._loop:
+            coro.close()
+            return
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        self._owned_futures.add(future)
+        future.add_done_callback(self._owned_futures.discard)
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open Scribe connection and begin feeding audio."""
         self._loop = asyncio.get_running_loop()
         self._inbound_queue = inbound_queue
+        self._stopping = False
         while not inbound_queue.empty():
             try:
                 inbound_queue.get_nowait()
             except asyncio.QueueEmpty:
                 break
+        # VR-005 D-A: _connect()'s _ensure_feed_task() creates the ONE feeder;
+        # a second create_task here orphaned the first (duplicate feed task).
         await self._connect()
-        self._feed_task = asyncio.create_task(
-            self._feed_audio(inbound_queue), name="stt_feed"
-        )
         logger.info("PersistentSttSession started")
 
     async def _connect(self) -> None:
@@ -127,6 +145,8 @@ class PersistentSttSession:
         single ``stt_feed`` task is otherwise an unrepaired single point of
         failure that causes permanent STT deafness.
         """
+        if self._stopping:  # VR-005: never resurrect a feeder after stop()
+            return
         if self._inbound_queue is not None and (
             self._feed_task is None or self._feed_task.done()
         ):
@@ -135,9 +155,21 @@ class PersistentSttSession:
             )
 
     async def stop(self) -> None:
-        """Cancel feed task and close Scribe connection."""
+        """Cancel and await all session-owned work, then close Scribe.
+
+        VR-005: "stopped" in the log means every session-spawned task and
+        scheduled reconnect future is done — signal = state, not intent.
+        """
+        self._stopping = True
+        awaitables: list[Any] = []
+        for future in list(self._owned_futures):
+            future.cancel()
+            awaitables.append(asyncio.wrap_future(future))
         if self._feed_task:
             self._feed_task.cancel()
+            awaitables.append(self._feed_task)
+        if awaitables:
+            await asyncio.gather(*awaitables, return_exceptions=True)
         if self._stt:
             with contextlib.suppress(Exception):
                 await self._stt.close()
@@ -163,7 +195,7 @@ class PersistentSttSession:
                         spoke_for,
                         self._RECONNECT_AFTER_SPEAKING_S,
                     )
-                    asyncio.run_coroutine_threadsafe(self._connect(), self._loop)
+                    self._schedule_owned(self._connect())
 
     # NC-170 Fix 2: exponential backoff constants
     _RECONNECT_BASE_DELAY_S = 1.0
@@ -347,7 +379,7 @@ class PersistentSttSession:
                 "STT fatal error (%s) — scheduling reconnect",
                 msg_type,
             )
-            asyncio.run_coroutine_threadsafe(self._reconnect_after_error(), self._loop)
+            self._schedule_owned(self._reconnect_after_error())
         elif msg_type in self._TERMINAL_ERRORS:
             logger.error("STT terminal error (%s) — no reconnect", msg_type)
             if self.on_error:

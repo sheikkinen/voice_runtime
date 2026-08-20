@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- **VR-005**: STT sessions now own every task/future they spawn. Three defects in one family: (D-A) `PersistentSttSession.start()` double-created the `stt_feed` task — `_connect()`'s `_ensure_feed_task()` made one, `start()` overwrote the reference with a second; two feeders raced one inbound queue (intermittent lost first utterance / `commits=0`, known since 0.1.8) and the orphan survived `stop()` to loop close (`Task was destroyed but it is pending!`). (D-B) reconnect work scheduled via `run_coroutine_threadsafe` (long-TTS `_connect()`, fatal-error `_reconnect_after_error()`; same shape in Azure `_on_canceled()`) dropped the returned future, unreachable from `stop()`. (D-C) `stop()` cancelled without awaiting. Now: exactly one feeder per session, a session-owned future registry for scheduled reconnects in both providers, and `stop()` cancels and awaits all session-owned work (`gather(..., return_exceptions=True)`) before logging stopped — the log line means done, not requested.
+
 ## 0.1.12 - 2026-08-13
 
 ### Fixed

@@ -24,9 +24,9 @@ import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
 from tests.conftest import requires_azure
-from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
 FRAME = b"\x10" * 160
 
@@ -201,9 +201,7 @@ async def test_fatal_error_reconnect_future_owned(monkeypatch) -> None:
         pending = _live_tasks("_reconnect_after_error")
         assert not pending, "stop() must cancel and drain the owned reconnect"
     finally:
-        await _drain(
-            _live_tasks("_reconnect_after_error") + _live_tasks("stt_feed")
-        )
+        await _drain(_live_tasks("_reconnect_after_error") + _live_tasks("stt_feed"))
 
 
 @requires_azure
@@ -218,7 +216,6 @@ async def test_azure_canceled_reconnect_future_owned() -> None:
     parked in backoff sleep.
     """
     import azure.cognitiveservices.speech as speechsdk
-
     from voice_runtime.providers.azure_stt import AzurePersistentStt
 
     with (
@@ -244,8 +241,6 @@ async def test_azure_canceled_reconnect_future_owned() -> None:
         await asyncio.sleep(0)
         try:
             pending = _live_tasks("_reconnect_after_error")
-            assert not pending, (
-                "stop() must cancel and drain the owned reconnect"
-            )
+            assert not pending, "stop() must cancel and drain the owned reconnect"
         finally:
             await _drain(_live_tasks("_reconnect_after_error"))

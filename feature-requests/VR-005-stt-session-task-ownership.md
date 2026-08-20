@@ -2,7 +2,7 @@
 
 **Priority:** HIGH (sole remaining cause of harness `No crash` failures on happy-path runs; also loses the first caller utterance)
 **Type:** Bug fix
-**Status:** Approved with revisions (judged 2026-08-20, see `.judgement.md`; R-1–R-6 folded in below)
+**Status:** ENFORCED 2026-08-20 (RED dd760a6, GREEN pending release; judged Approved with revisions, R-1–R-6 folded in)
 **Effort:** 0.5 day
 **Requested:** 2026-08-20
 **Downstream:** csap-black-box-tests FR-003/FR-005 (harness-side teardown fixed there; this is the remaining upstream half), csap-black `docs/known-bug-voice-runtime-duplicate-feed-task.md` (open since 0.1.8), csap case studies 2026-08-20-hp35-CA19b1f876… (Finding 3) and 2026-08-20-hp93-CAc8b7f44b… (residual section)
@@ -167,3 +167,25 @@ closure):
   (Finding 3: post-FR-003 run, stop() ran, duplicate still orphaned);
   `docs/case-studies/2026-08-20-hp93-CAc8b7f44b6c02f2d6becb78d32f7377b9/`
   (residual: reconnect-spawned orphans).
+
+## Enforcement record (2026-08-20)
+
+- RED dd760a6: 5 witnesses in `tests/test_vr005_stt_session_task_ownership.py`,
+  all failing on 0.1.12 for the condemned behavior (2 feeders observed;
+  `_feed_task` still cancelling after `stop()`; pending `_connect` /
+  `_reconnect_after_error` tasks in both providers).
+- GREEN: `start()` no longer double-creates (one feeder via `_connect()`'s
+  `_ensure_feed_task()`, now `_stopping`-guarded against post-stop
+  resurrection); `_schedule_owned()` retains every `run_coroutine_threadsafe`
+  handle in `_owned_futures` (done-callback discards) in BOTH providers;
+  `stop()` cancels then `gather(..., return_exceptions=True)`s all owned
+  work before closing the SDK connection. SDK internals untouched (AC-06):
+  the boundary remains `close()`/`stop_continuous_recognition`.
+- Full suite: 323 passed, 1 skipped (azure extra installed locally so the
+  AC-05 witness runs; CI installs `[dev,elevenlabs]` and skips it — the
+  existing repo pattern for azure-marked tests).
+- Deviation from FR option space: took the "delete start()'s create" arm
+  of D-A fix; added `_stopping` guard to `_ensure_feed_task` (AC-04's
+  "recreation only after prior feeder done" + no post-stop resurrection).
+- AC-08 in-repo: CHANGELOG Unreleased entry added. Post-release half open:
+  release + downstream pin + HP-35/HP-93 field observation.

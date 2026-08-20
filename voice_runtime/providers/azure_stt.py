@@ -15,12 +15,13 @@ AzurePersistentStt: continuous recognition for full call duration.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import logging
 import os
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
@@ -64,9 +65,20 @@ class AzurePersistentStt:
         self._feed_task: asyncio.Task[None] | None = None
         self._stopping = False  # NC-258 J-5: teardown race guard
         self._reconnect_attempt: int = 0  # NC-258: backoff counter
+        # VR-005: handles for reconnect work scheduled on the loop
+        self._owned_futures: set[concurrent.futures.Future[Any]] = set()
         self.on_committed: Callable[[str], None] | None = None
         self.on_recognizing: Callable[[str], None] | None = None
         self.on_error: Callable[[str], None] | None = None  # NC-258
+
+    def _schedule_owned(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Schedule session work on the loop, retaining the handle (VR-005)."""
+        if self._stopping or not self._loop:
+            coro.close()
+            return
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        self._owned_futures.add(future)
+        future.add_done_callback(self._owned_futures.discard)
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Open push stream, configure recognizer, begin feeding audio."""
@@ -110,12 +122,20 @@ class AzurePersistentStt:
         logger.info("AzurePersistentStt started (lang=%s)", self._language_code)
 
     async def stop(self) -> None:
-        """Stop continuous recognition and close push stream."""
+        """Stop continuous recognition and close push stream.
+
+        VR-005: drains session-owned reconnect futures before returning.
+        """
         self._stopping = True  # NC-258 J-5: prevent reconnect during teardown
+        awaitables: list[Any] = []
+        for future in list(self._owned_futures):
+            future.cancel()
+            awaitables.append(asyncio.wrap_future(future))
         if self._feed_task:
             self._feed_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._feed_task
+            awaitables.append(self._feed_task)
+        if awaitables:
+            await asyncio.gather(*awaitables, return_exceptions=True)
         if self._recognizer:
             with contextlib.suppress(Exception):
                 self._recognizer.stop_continuous_recognition_async().get()
@@ -167,10 +187,7 @@ class AzurePersistentStt:
         if reason == speechsdk.CancellationReason.Error:
             logger.error("Azure STT canceled: %s — %s", reason, error_details)
             if self._loop:
-                asyncio.run_coroutine_threadsafe(
-                    self._reconnect_after_error(),
-                    self._loop,
-                )
+                self._schedule_owned(self._reconnect_after_error())
         elif reason == speechsdk.CancellationReason.EndOfStream:
             logger.info("Azure STT: end of stream (expected)")
         else:
