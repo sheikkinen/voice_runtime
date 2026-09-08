@@ -2,6 +2,17 @@
 
 Provider-agnostic voice call runtime for telephony projects. Manages audio queues, mark synchronization, STT/TTS providers, and transport protocols — so consumers focus on conversation logic, not plumbing.
 
+## Explicit regional Twilio REST APIs (0.1.14)
+
+Use `hangup_call(..., regions=...)` for ordered regional hangup and `list_calls(...)`
+for complete, typed, destination-filtered reads. Account path identity is separate
+from API-key authentication. Regional absence is not proof that a call ended;
+unknown timestamps and incomplete reads remain explicit.
+
+See the [migration guide and independent examples](docs/regional-twilio-migration.md).
+Existing SMS/outbound behavior is unchanged; the old CDR reader is not silently
+replaced. This package does not configure consumer secrets or rollout policy.
+
 ## Quick Example
 
 Make a call, say something, listen for a response via `on_committed` callback, hang up:

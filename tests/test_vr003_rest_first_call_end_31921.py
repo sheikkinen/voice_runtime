@@ -143,15 +143,15 @@ class TestRestFirstDisconnect:
         assert await _poll(lambda: session.call_sid == "test-call")
         session.request_disconnect()
 
-        assert await _poll(lambda: ("rest", "test-call") in order), (
-            f"REST hangup never attempted on disconnect; order={order}"
-        )
+        assert await _poll(
+            lambda: ("rest", "test-call") in order
+        ), f"REST hangup never attempted on disconnect; order={order}"
         # Twilio closes the WS from its side after the REST hangup
         await _finish(task, ws)
 
-        assert order == [("rest", "test-call")], (
-            f"server-side close must not fire when Twilio closes first: {order}"
-        )
+        assert order == [
+            ("rest", "test-call")
+        ], f"server-side close must not fire when Twilio closes first: {order}"
 
     @pytest.mark.asyncio
     async def test_rest_failure_falls_back_to_ws_close(self, creds, monkeypatch):
@@ -174,9 +174,9 @@ class TestRestFirstDisconnect:
         assert await _poll(lambda: session.call_sid == "test-call")
         session.request_disconnect()
 
-        assert await _poll(lambda: ("close", 1000) in order), (
-            f"fallback WS close never happened after REST failure; order={order}"
-        )
+        assert await _poll(
+            lambda: ("close", 1000) in order
+        ), f"fallback WS close never happened after REST failure; order={order}"
         assert order[0] == ("rest", "test-call"), "REST must be attempted first"
         await _finish(task, ws)
 
@@ -204,9 +204,9 @@ class TestRestFirstDisconnect:
         assert await _poll(lambda: session.call_sid == "test-call")
         session.request_disconnect()
 
-        assert await _poll(lambda: ("close", 1000) in order), (
-            f"fallback close never fired after inbound-close timeout; order={order}"
-        )
+        assert await _poll(
+            lambda: ("close", 1000) in order
+        ), f"fallback close never fired after inbound-close timeout; order={order}"
         assert order == [("rest", "test-call"), ("close", 1000)]
         await _finish(task, ws)
 
@@ -282,8 +282,10 @@ class TestTerminalPredicate:
         ):
             hangup_call("CA123")
 
-    def test_404_is_idempotent_success(self):
-        self._hangup_raising(TwilioRestException(404, "/Calls/CA123", "not found"))
+    @pytest.mark.req("VR-004")
+    def test_unclassified_404_propagates(self):
+        with pytest.raises(TwilioRestException):
+            self._hangup_raising(TwilioRestException(404, "/Calls/CA123", "not found"))
 
     def test_400_code_21220_is_idempotent_success(self):
         self._hangup_raising(
@@ -338,9 +340,9 @@ class TestOffLoopExecution:
         assert await _poll(lambda: session.call_sid == "test-call")
         session.request_disconnect()
 
-        assert await _poll(lambda: bool(tick_deltas), timeout=3.0), (
-            "REST hangup never ran"
-        )
+        assert await _poll(
+            lambda: bool(tick_deltas), timeout=3.0
+        ), "REST hangup never ran"
         await _finish(task, ws)
         tick_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

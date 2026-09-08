@@ -2,6 +2,22 @@
 
 **Verdict:** APPROVED — the revised FR is a clear, bounded provider-boundary repair whose dependency, legacy-mode, regional-routing, and independent-release contracts are now explicit and mechanically testable; this draft remains advisory until human-reviewed and promoted.
 
+## Human promotion record — 2026-09-08
+
+The owner instructed: **"merge. enforce. pr. outsider. review"** after the
+two final APPROVED judgements and docs PR #4 were presented. Docs PR #4
+was then merged as `67cfa28a4036daafad24b5e602d822ac28cae805`, before
+behavioral RED `599aedd`. That explicit instruction promoted the final
+round-2 judgement for enforcement; the docs merge was the recorded planning
+baseline, not an inference that any merge automatically grants authority.
+
+This note records that already-given decision after PR #5's first review
+identified its absence from the canonical artifact. It is not a new model
+verdict, a third judge round, or human approval to merge implementation PR #5.
+The two independent verdicts below remain verbatim historical records;
+their prospective human-promotion condition was satisfied by the instruction
+above before enforcement began. Publication and deployment remain unapproved.
+
 **Reviewed against:** `projects/voice_runtime/feature-requests/VR-004-region-aware-hangup.md`; existing promoted judgement `projects/voice_runtime/feature-requests/VR-004-region-aware-hangup.judgement.md`; committed predecessor of VR-004 at `projects/voice_runtime@3e5333b^`; `projects/voice_runtime/feature-requests/VR-002-twilio-http-timeout.md`; `projects/voice_runtime/feature-requests/VR-002-twilio-http-timeout.judgement.md`; `projects/voice_runtime/feature-requests/VR-003-rest-first-call-end-31921.md`; `projects/voice_runtime/feature-requests/VR-003-rest-first-call-end-31921.judgement.md`; `projects/voice_runtime/feature-requests/VR-006-region-aware-cdr-read.md`; `projects/voice_runtime/voice_runtime/transports/twilio_call.py`; `projects/voice_runtime/voice_runtime/transports/_twilio_client.py`; `projects/voice_runtime/voice_runtime/transports/twilio_ws.py`; `projects/voice_runtime/tests/test_vr002_twilio_http_timeout.py`; `projects/voice_runtime/tests/test_vr003_rest_first_call_end_31921.py`; `projects/voice_runtime/tests/test_twilio_call.py`; `projects/voice_runtime/pyproject.toml`; sibling-repository baseline `customer-service-agent-platform@7f0442bc8ccf2bbd54f76f691937b34ee88adc94`: `feature-requests/NC-493-region-aware-reaper-hangup.md`, `feature-requests/NC-492-reconciler-restoration.md`, `feature-requests/evidence/NC-488-reconciler-diagnosis.md`, `feature-requests/evidence/NC-429-zero-31921.md`, `feature-requests/VBOT-97-twilio-sms-standalone-component.md`, and `troubleshooting/gather_twilio.py`; judge doctrine `.github/skills/judge-fr/doctrine.md`; judgement template `.github/skills/judge-fr/judgement.template.md`; repo doctrine `.github/copilot-instructions.md`.
 
 ## What is sound

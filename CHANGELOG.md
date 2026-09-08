@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.14 - 2026-09-08
+
+### Fixed
+
+- **VR-004**: `hangup_call(call_sid, regions=...)` accepts ordered, frozen
+	`TwilioRegion` configurations with separate authentication/account identity.
+	Explicit requests ignore ambient credentials and routing. Only 2xx or
+	400/21220 confirms terminal state; 404/20404 tries the next supplied region
+	and exhaustion raises `TwilioCallNotFoundError`. The original one-argument
+	mode now raises on absence too, with its actual ambient-selected hostname.
+
+### Added
+
+- **VR-006**: `list_calls(...)` requires explicit regional authentication,
+	destination and an aware time boundary. It returns frozen `TwilioCallRow`
+	records with nullable epoch timestamps, preserving unknown time rather than
+	inventing zero. Validated SDK pagination preserves continuation query tokens;
+	page-cap exhaustion raises `TwilioCallListIncompleteError`, and malformed
+	data, redirects or later-page failures never return partial results.
+- Both explicit APIs enforce finite positive per-request timeouts (default
+	15 seconds) and URI-safe configuration. Pydantic v2 is now a direct dependency.
+
+### Migration
+
+- `list_recent_calls` keeps its original behavior, including `limit=200` and
+	missing-credential `[]`; only its docstring is deprecated. Migrate deliberately
+	using the [independent regional API examples](docs/regional-twilio-migration.md).
+- This version is prepared locally; publication, consumer pins and rollout
+	remain separate operator actions.
+
 ## 0.1.13 - 2026-08-20
 
 ### Fixed
