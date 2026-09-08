@@ -2,7 +2,7 @@
 
 **Priority:** HIGH
 **Type:** Bug fix + new provider contract
-**Status:** Proposed — amended 2026-09-08; not implementation authority
+**Status:** Proposed — round-1 revisions folded; dependency re-plan awaits re-judgement
 **Requested:** 2026-09-08
 **Target release:** 0.1.14, shared with VR-004
 **First consumer / first event:** CSAP NC-492 PR-2, when the guarded
@@ -40,9 +40,11 @@ list_calls(*, api_host: str, account_sid: str, auth: tuple[str, str],
 
 - Use VR-004's shared explicit-client boundary: only `api.twilio.com` or
   `api.<edge>.<region>.twilio.com` with lowercase DNS labels; no scheme,
-  port, userinfo, path/query or unrelated host. Nonblank account SID without
-  path/query delimiters and exactly two nonblank auth strings. Account path
+  port, userinfo, path/query or unrelated host. Nonblank strict ASCII
+  alphanumeric account SID and exactly two nonblank auth strings. Account path
   identity is independent of the authenticating API key SID.
+  Reject whitespace, control/non-ASCII characters, percent escapes, `/`,
+  `\`, `?` and `#` before client construction, not merely before HTTP.
 - `to` is required and nonblank; never read from the environment. Reject
   whitespace-only values; pass other values through as Twilio's filter.
 - Require aware `start_after`, converted to UTC; naive raises before HTTP.
@@ -89,6 +91,11 @@ raises, discarding accumulated rows. No retry or silent partial result.
 | `start_time` | `float \| None`: UTC epoch seconds from an aware SDK datetime; null stays null, never zero |
 | `direction` | Nonblank strict string, verbatim (`inbound`, `outbound-api`, etc.) |
 | `caller` | `str \| None`, from SDK `from_`; null/blank becomes `None`; preserve other values, including anonymous labels |
+
+Declare `pydantic>=2.0,<3` as a direct runtime dependency in `pyproject.toml`.
+It is currently installed transitively through FastAPI, not declared directly;
+the public row model makes it this package's own contract. VR-004 needs the
+same declaration, added only once. No other dependency change is in scope.
 
 Missing required strings, wrong types or malformed/non-aware timestamps
 raise, not silently skip. Extra provider fields are not exposed. Missing/null
@@ -137,6 +144,9 @@ tests passed; no live requests were made for this amendment.
 - [ ] AC-02: Missing keywords and invalid host/account/auth, blank destination,
       naive datetime and invalid page bounds fail before HTTP. No auth values
       in diagnostics and no unfiltered query.
+  Table-driven account-SID cases reject non-ASCII/non-alphanumeric values,
+  whitespace/control characters, percent escapes, `/`, `\`, `?` and `#`
+  with `ValueError` before client construction and with zero HTTP requests.
 - [ ] AC-03: Assert all five normalized fields, both directions and caller
       labels, aware-time epoch conversion, retained null time, exclusion at
       and before cutoff, and rejection of malformed rows.
@@ -153,18 +163,32 @@ tests passed; no live requests were made for this amendment.
       assertion. No SMS/outbound/signature changes. Full offline suite passes;
       tests carry `@pytest.mark.req("VR-006")`. Minimal API skeleton may
       precede RED so failure is behavioral, not collection/import failure.
-- [ ] AC-08: Record decisions, typed migration example, changelog and joint
-      0.1.14 release with VR-004; built-distribution smoke imports both APIs
-      and models/exceptions. Pins/rollout remain NC-492/NC-493 work.
+- [ ] AC-08: Record VR-006 decisions, typed migration example and changelog;
+  built-distribution smoke imports `list_calls`, `TwilioCallRow` and
+  `TwilioCallListIncompleteError` without requiring VR-004 exports. Declare
+  `pydantic>=2.0,<3` directly; verify these imports in a clean environment
+  installed from the built distribution, not an editable checkout.
+- [ ] AC-09: Coordinate publication as 0.1.14; it may include VR-004 only
+  after separate judgement and enforcement. VR-006 tests/smoke do not
+  import VR-004-owned exports or require hangup changes. Either FR may
+  implement its needed shared helper first. Pins/rollout are CSAP work.
 
 ## Scope and decisions (2026-09-08)
 
 Only call-read implementation, shared explicit-client boundary, small model
-module if size limits require it, tests, docs and release metadata. No new
-dependency. VR-004 owns hangup's intentional 404 change; this FR changes no
+module if size limits require it, tests, docs and release metadata, plus the
+direct Pydantic v2 dependency declaration. No other dependency changes.
+VR-004 owns hangup's intentional 404 change; this FR changes no
 other callable. No deployment, credential access, billable calls or induced
 incidents. NC-492's mirror guard gates its consumer authentication change,
 not library work or NC-493 rollout.
+
+Round-1 identifier and independent-authority revisions are folded. The shared
+dependency assumption was disproved: local Pydantic 2.13.4 / FastAPI 0.141.1
+are installed, but 0.1.13 has no direct Pydantic declaration. The owner
+authorized this revised plan and docs PR on 2026-09-08; dependency scope is
+re-submitted to independent judgement. This PR changes documents only, not
+runtime or manifests; implementation is a later task.
 
 ## Sources
 
@@ -172,3 +196,4 @@ not library work or NC-493 rollout.
 - [Call implementation](../voice_runtime/transports/twilio_call.py), [client boundary](../voice_runtime/transports/_twilio_client.py), [timeout tests](../tests/test_vr002_twilio_http_timeout.py).
 - [NC-492](../../../customer-service-agent-platform/feature-requests/NC-492-reconciler-restoration.md), [NC-493](../../../customer-service-agent-platform/feature-requests/NC-493-region-aware-reaper-hangup.md).
 - [NC-488 evidence](../../../customer-service-agent-platform/feature-requests/evidence/NC-488-reconciler-diagnosis.md), [collector](../../../customer-service-agent-platform/troubleshooting/gather_twilio.py), [SMS precedent](../../../customer-service-agent-platform/feature-requests/VBOT-97-twilio-sms-standalone-component.md).
+- [Dependency manifest](../pyproject.toml) (0.1.13, direct runtime dependencies).

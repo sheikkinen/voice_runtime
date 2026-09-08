@@ -2,7 +2,7 @@
 
 **Priority:** HIGH
 **Type:** Bug fix + explicit provider contract
-**Status:** Proposed — amended 2026-09-08; not implementation authority
+**Status:** Proposed — round-1 revisions folded; dependency re-plan awaits re-judgement
 **Requested:** 2026-08-17
 **Target release:** 0.1.14, shared with VR-006; 0.1.13 already shipped VR-005
 **First consumer / first event:** CSAP NC-493, when the supervisor reaper
@@ -34,13 +34,20 @@ hangup_call(call_sid: str, *, regions: tuple[TwilioRegion, ...] | None = None) -
 `TwilioRegion`, exported from the same module, is a frozen Pydantic model
 with `api_host: str`, `account_sid: str`, `auth: tuple[str, str]`.
 Exclude auth from repr and hide input values in validation messages.
+Declare `pydantic>=2.0,<3` as a direct runtime dependency in `pyproject.toml`:
+FastAPI currently supplies it transitively, but this public model makes it
+our own dependency. This explicit dependency-contract change replaces the
+first draft's incorrect "no new dependency" claim. VR-006 needs the same
+declaration, added only once; no other dependency change is authorized.
 
 ### Explicit mode
 
 - Validate the complete, nonempty tuple with distinct hosts before HTTP.
-  Require nonblank call/account SIDs without path/query delimiters and
+      Require nonblank strict ASCII alphanumeric call/account SIDs and
   exactly two nonblank auth strings. Invalid values raise `ValueError`
   (including Pydantic `ValidationError`); diagnostics do not expose auth.
+      Before client construction reject whitespace, control/non-ASCII characters,
+      percent escapes, `/`, `\`, `?` and `#` in either SID.
 - Accept `api.twilio.com` or `api.<edge>.<region>.twilio.com` with lowercase
   DNS labels. Reject schemes, ports, userinfo, paths, query strings and
   unrelated hosts. No hardcoded list of supported regions.
@@ -69,6 +76,9 @@ region handling, missing-credential errors, 2xx and 400/21220 success.
 **Only the 404 success rule changes:** 404/20404 raises the named exception
 after the single attempt; other errors propagate. This corrects VR-003,
 without turning the old entry point into a regional discovery mechanism.
+For that exception, `attempted_hosts` is a one-item tuple containing the
+actual normalized request hostname after SDK ambient region/edge handling,
+not a guessed US1 default. Assert it against the final fake-HTTP request URL.
 
 The media handler already catches hangup exceptions before WS close; retain
 and test that path. Its token precheck, signature validation and graceful
@@ -121,6 +131,9 @@ The 2026-09-08 probe used fake HTTP and dummy credentials, zero network;
       conflicting ambient credentials/region/edge cannot alter either request.
       Invalid identifiers/hosts, empty or duplicate regions and blank auth
       fail before HTTP; model repr and diagnostics contain no auth values.
+      Table-driven cases reject each forbidden SID class (including `/`,
+      `\`, `?`, `#`, percent escapes, whitespace/control and non-ASCII)
+      in both call/account SID before client construction.
 - [ ] AC-05: Every explicit attempt has bounded default/overridden timeout;
       invalid/nonfinite/nonpositive values fail before HTTP. Lazy imports and
       `_twilio_client.py` as the sole construction boundary remain enforced.
@@ -128,18 +141,28 @@ The 2026-09-08 probe used fake HTTP and dummy credentials, zero network;
       404/20404 now raises. Replace VR-003's 404-success expectation and prove
       the media handler reaches its existing WS-close exception path without
       waiting its five-second REST-close window.
+      With nondefault ambient region/edge, the exception's one-item
+      `attempted_hosts` equals the actual normalized request hostname.
 - [ ] AC-07: No SMS, outbound, STT, signature or `list_recent_calls` changes;
       full offline suite passes. Tests carry `@pytest.mark.req("VR-004")`;
       RED is behavioral, not a collection/import failure (minimal API skeleton
       may precede RED).
-- [ ] AC-08: Record decisions, changelog, migration example and joint 0.1.14
-      release with VR-006; built-distribution smoke imports both APIs and
-      models/exceptions. CSAP owns exact pins and TEST/STG evidence.
+- [ ] AC-08: Record VR-004 decisions, changelog and migration example;
+      built-distribution smoke imports `hangup_call`, `TwilioRegion` and
+      `TwilioCallNotFoundError`, without requiring VR-006 exports. Declare
+      `pydantic>=2.0,<3` directly and prove these exports work in a clean
+      environment installed from the built distribution, not an editable tree.
+      CSAP owns exact pins and TEST/STG evidence.
+- [ ] AC-09: Coordinate publication as 0.1.14; a joint artifact may include
+      VR-006 only after its separate judgement and enforcement. VR-004 tests
+      do not depend on or assert VR-006 APIs. Either FR may implement its
+      needed shared helper first; neither authority covers the other's callable.
 
 ## Scope and decisions (2026-09-08)
 
 - Surfaces: `twilio_call.py`, `_twilio_client.py`, small model module if
-  needed for size limits, tests, docs and release metadata. No new dependency.
+      needed for size limits, tests, docs and release metadata, plus the explicit
+      Pydantic v2 dependency declaration. No other dependency changes.
   Share explicit construction with VR-006 without changing old callers.
 - NC-493 D-2 permits "already gone" after all-region absence; its AC-02
   forbids that claim. Follow **AC-02: failure**. NC-493 must fold that
@@ -148,6 +171,13 @@ The 2026-09-08 probe used fake HTTP and dummy credentials, zero network;
   Shared release does not authorize early reconciler deployment.
 - No billable calls, induced failures, deployments, credential operations,
   signature hardening, worker lifecycle edits or consumer implementation.
+- Round-1 revisions: exact old-mode hostname metadata, URI-safe SID validation
+      and independent release acceptance are folded. Dependency finding confirmed:
+      local Pydantic 2.13.4 / FastAPI 0.141.1, but no direct Pydantic declaration
+      in 0.1.13. Owner authorized the revised plan and docs PR on 2026-09-08;
+      the dependency scope is re-submitted to the independent judge. This PR
+      changes documents only, not the manifest or runtime; implementation remains
+      a later task under the final judgement.
 
 ## Sources
 
@@ -156,3 +186,4 @@ The 2026-09-08 probe used fake HTTP and dummy credentials, zero network;
 - [NC-488 evidence](../../../customer-service-agent-platform/feature-requests/evidence/NC-488-reconciler-diagnosis.md), [NC-429 historical evidence](../../../customer-service-agent-platform/feature-requests/evidence/NC-429-zero-31921.md).
 - [SMS precedent](../../../customer-service-agent-platform/feature-requests/VBOT-97-twilio-sms-standalone-component.md), [collector](../../../customer-service-agent-platform/troubleshooting/gather_twilio.py).
 - [Call implementation](../voice_runtime/transports/twilio_call.py), [client](../voice_runtime/transports/_twilio_client.py), [media handler](../voice_runtime/transports/twilio_ws.py), [existing tests](../tests/test_vr003_rest_first_call_end_31921.py).
+- [Dependency manifest](../pyproject.toml) (0.1.13, direct runtime dependencies).
