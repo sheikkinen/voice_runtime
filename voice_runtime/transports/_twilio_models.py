@@ -1,6 +1,8 @@
 """Typed contracts for explicit Twilio REST operations."""
 
 import re
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -60,11 +62,76 @@ class TwilioCallNotFoundError(RuntimeError):
 class TwilioCallRow(BaseModel):
     """One normalized call record with explicitly nullable time and caller."""
 
+    model_config = ConfigDict(frozen=True, strict=True, hide_input_in_errors=True)
+
     call_sid: str
     status: str
     start_time: float | None
     direction: str
     caller: str | None
+
+    @field_validator("call_sid", "status", "direction")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Required call string must not be blank")
+        return value
+
+    @field_validator("caller")
+    @classmethod
+    def blank_caller(cls, value: str | None) -> str | None:
+        return value if value is not None and value.strip() else None
+
+
+class _CallRecord(BaseModel):
+    """Validate raw SDK page records BEFORE its lossy datetime deserializer.
+
+    SDK 9.x parsedate drops offsets and converts malformed dates to None.
+    Preserve that evidence here; extra provider fields are not public fields.
+    """
+
+    model_config = ConfigDict(strict=True, hide_input_in_errors=True)
+
+    call_sid: str = Field(alias="sid")
+    status: str
+    start_time: datetime | None = None
+    direction: str
+    caller: str | None = Field(default=None, alias="from")
+
+    @field_validator("start_time", mode="before")
+    @classmethod
+    def aware_timestamp(cls, value: object) -> datetime | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                value = parsedate_to_datetime(value)
+            except (ValueError, TypeError, OverflowError):
+                raise ValueError("Malformed call start_time") from None
+        if not isinstance(value, datetime) or value.utcoffset() is None:
+            raise ValueError("Call start_time must be timezone-aware or null")
+        return value.astimezone(UTC)
+
+    def as_row(self) -> TwilioCallRow:
+        """Convert validated provider fields to the five-field public contract."""
+        return TwilioCallRow(
+            call_sid=self.call_sid,
+            status=self.status,
+            start_time=self.start_time.timestamp()
+            if self.start_time is not None
+            else None,
+            direction=self.direction,
+            caller=self.caller,
+        )
+
+
+class _CallPage(BaseModel):
+    """Require Calls records and explicit continuation state on EVERY page."""
+
+    model_config = ConfigDict(strict=True, hide_input_in_errors=True)
+
+    calls: list[_CallRecord]
+    next_page_uri: str | None
 
 
 class TwilioCallListIncompleteError(RuntimeError):
