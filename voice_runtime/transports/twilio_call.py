@@ -11,6 +11,8 @@ import os
 from urllib.parse import quote
 
 from ._twilio_client import build_twilio_client
+from ._twilio_models import TwilioCallNotFoundError as TwilioCallNotFoundError
+from ._twilio_models import TwilioRegion as TwilioRegion
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +113,9 @@ def initiate_outbound_call(phone: str) -> str:
     return call.sid
 
 
-def hangup_call(call_sid: str) -> None:
+def hangup_call(
+    call_sid: str, *, regions: tuple[TwilioRegion, ...] | None = None
+) -> None:
     """End a live call at the Twilio REST boundary (ninchat_voice NC-362).
 
     Works regardless of the worker/session state — Twilio completes the
@@ -124,6 +128,8 @@ def hangup_call(call_sid: str) -> None:
     Raises:
         RuntimeError: If Twilio credentials are missing.
     """
+    if regions is not None:
+        raise NotImplementedError("VR-004 explicit hangup")
     account_sid, auth_token, _phone_number, _stream_url = _get_twilio_env()
     if not account_sid or not auth_token:
         raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
