@@ -55,3 +55,24 @@ class TwilioCallNotFoundError(RuntimeError):
     def __init__(self, attempted_hosts: tuple[str, ...]):
         self.attempted_hosts = attempted_hosts
         super().__init__(f"Call not found in: {', '.join(attempted_hosts)}")
+
+
+class TwilioCallRow(BaseModel):
+    """One normalized call record with explicitly nullable time and caller."""
+
+    call_sid: str
+    status: str
+    start_time: float | None
+    direction: str
+    caller: str | None
+
+
+class TwilioCallListIncompleteError(RuntimeError):
+    """The region still has continuation after the request cap."""
+
+    def __init__(self, api_host: str, pages_fetched: int):
+        self.api_host = api_host
+        self.pages_fetched = pages_fetched
+        super().__init__(
+            f"Incomplete call list from {api_host} after {pages_fetched} pages"
+        )

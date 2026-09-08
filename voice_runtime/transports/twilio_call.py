@@ -8,10 +8,15 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime
 from urllib.parse import quote, urlsplit
 
 from ._twilio_client import build_explicit_twilio_client, build_twilio_client
+from ._twilio_models import (
+    TwilioCallListIncompleteError as TwilioCallListIncompleteError,
+)
 from ._twilio_models import TwilioCallNotFoundError as TwilioCallNotFoundError
+from ._twilio_models import TwilioCallRow as TwilioCallRow
 from ._twilio_models import TwilioRegion as TwilioRegion
 from ._twilio_models import validate_sid
 
@@ -193,3 +198,17 @@ def list_recent_calls(lookback_s: float = 3600.0) -> list[dict]:
         }
         for c in calls
     ]
+
+
+def list_calls(
+    *,
+    api_host: str,
+    account_sid: str,
+    auth: tuple[str, str],
+    to: str,
+    start_after: datetime,
+    page_size: int = 200,
+    max_pages: int = 10,
+) -> list[TwilioCallRow]:
+    """Fetch a complete, destination-filtered, explicit-region call list."""
+    raise NotImplementedError("VR-006 complete regional CDR read")
