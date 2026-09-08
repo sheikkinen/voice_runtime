@@ -2,7 +2,8 @@
 
 **Priority:** HIGH
 **Type:** Bug fix + explicit provider contract
-**Status:** Proposed — round-1 revisions folded; dependency re-plan awaits re-judgement
+**Status:** Judged APPROVED (round 2, 2026-09-08) — docs only; not implemented.
+Final verdict recorded for human review in [judgement history](VR-004-region-aware-hangup.judgement.md).
 **Requested:** 2026-08-17
 **Target release:** 0.1.14, shared with VR-006; 0.1.13 already shipped VR-005
 **First consumer / first event:** CSAP NC-493, when the supervisor reaper
@@ -175,9 +176,9 @@ The 2026-09-08 probe used fake HTTP and dummy credentials, zero network;
       and independent release acceptance are folded. Dependency finding confirmed:
       local Pydantic 2.13.4 / FastAPI 0.141.1, but no direct Pydantic declaration
       in 0.1.13. Owner authorized the revised plan and docs PR on 2026-09-08;
-      the dependency scope is re-submitted to the independent judge. This PR
+      round 2 independently approved the explicit dependency scope. This PR
       changes documents only, not the manifest or runtime; implementation remains
-      a later task under the final judgement.
+      a later task after human review of the final judgement.
 
 ## Sources
 

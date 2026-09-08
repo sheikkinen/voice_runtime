@@ -2,7 +2,8 @@
 
 **Priority:** HIGH
 **Type:** Bug fix + new provider contract
-**Status:** Proposed — round-1 revisions folded; dependency re-plan awaits re-judgement
+**Status:** Judged APPROVED (round 2, 2026-09-08) — docs only; not implemented.
+Final verdict recorded for human review in [judgement history](VR-006-region-aware-cdr-read.judgement.md).
 **Requested:** 2026-09-08
 **Target release:** 0.1.14, shared with VR-004
 **First consumer / first event:** CSAP NC-492 PR-2, when the guarded
@@ -187,8 +188,8 @@ Round-1 identifier and independent-authority revisions are folded. The shared
 dependency assumption was disproved: local Pydantic 2.13.4 / FastAPI 0.141.1
 are installed, but 0.1.13 has no direct Pydantic declaration. The owner
 authorized this revised plan and docs PR on 2026-09-08; dependency scope is
-re-submitted to independent judgement. This PR changes documents only, not
-runtime or manifests; implementation is a later task.
+independently approved in round 2. This PR changes documents only, not
+runtime or manifests; implementation follows human review of the final judgement.
 
 ## Sources
 
