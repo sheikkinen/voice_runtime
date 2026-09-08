@@ -2,6 +2,22 @@
 
 **Verdict:** APPROVED — the revised request folds the round-one path-safety and independent-authority requirements, explicitly owns its Pydantic dependency, and defines a cohesive, mechanically testable provider-boundary fix.
 
+## Human promotion record — 2026-09-08
+
+The owner instructed: **"merge. enforce. pr. outsider. review"** after the
+two final APPROVED judgements and docs PR #4 were presented. Docs PR #4
+was then merged as `67cfa28a4036daafad24b5e602d822ac28cae805`, before
+VR-006 behavioral RED `53402bc`. That instruction promoted the final
+round-2 judgement for enforcement; the docs merge records the planning
+baseline and is not itself a substitute for the explicit instruction.
+
+This note records an already-given decision after the first PR #5 review
+found the missing canonical record. It does not create a new model verdict
+or a third judge round, and does not authorize merging implementation PR #5.
+Both independent verdicts below remain verbatim. Their prospective promotion
+condition was satisfied before enforcement; publication and deployment are
+still separate decisions.
+
 **Reviewed against:** `projects/voice_runtime/feature-requests/VR-006-region-aware-cdr-read.md`; prior promoted judgement `projects/voice_runtime/feature-requests/VR-006-region-aware-cdr-read.judgement.md`; cited `projects/voice_runtime/feature-requests/VR-002-twilio-http-timeout.md` and `projects/voice_runtime/feature-requests/VR-002-twilio-http-timeout.judgement.md`; cited `projects/voice_runtime/feature-requests/VR-004-region-aware-hangup.md` and its promoted judgement `projects/voice_runtime/feature-requests/VR-004-region-aware-hangup.judgement.md`; cited `projects/voice_runtime/voice_runtime/transports/twilio_call.py`, `projects/voice_runtime/voice_runtime/transports/_twilio_client.py`, `projects/voice_runtime/tests/test_vr002_twilio_http_timeout.py`, and `projects/voice_runtime/pyproject.toml`; cited sibling-project baseline `customer-service-agent-platform@7f0442bc8ccf2bbd54f76f691937b34ee88adc94`, specifically `customer-service-agent-platform/feature-requests/NC-492-reconciler-restoration.md`, `customer-service-agent-platform/feature-requests/NC-493-region-aware-reaper-hangup.md`, `customer-service-agent-platform/feature-requests/evidence/NC-488-reconciler-diagnosis.md`, `customer-service-agent-platform/troubleshooting/gather_twilio.py`, and `customer-service-agent-platform/feature-requests/VBOT-97-twilio-sms-standalone-component.md`; judge doctrine `.github/skills/judge-fr/doctrine.md`; judgement template `.github/skills/judge-fr/judgement.template.md`; repo doctrine `.github/copilot-instructions.md`.
 
 ## What is sound
