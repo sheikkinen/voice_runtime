@@ -2,7 +2,7 @@
 
 **Priority:** HIGH
 **Type:** Bug fix + new provider contract
-**Status:** Judged APPROVED (round 2, 2026-09-08) — docs only; not implemented.
+**Status:** Implemented on branch (2026-09-08) — verified offline; PR review and publication pending.
 Final verdict recorded for human review in [judgement history](VR-006-region-aware-cdr-read.judgement.md).
 **Requested:** 2026-09-08
 **Target release:** 0.1.14, shared with VR-004
@@ -191,7 +191,33 @@ authorized this revised plan and docs PR on 2026-09-08; dependency scope is
 independently approved in round 2. This PR changes documents only, not
 runtime or manifests; implementation follows human review of the final judgement.
 
-## Sources
+## Implementation record (2026-09-08)
+
+Owner authorized enforcement after merging docs PR #4. Behavioral RED
+`53402bc` (180 failed / 5 passed) preceded GREEN `96cba6e`. The minimal
+importable API skeleton preceded behavioral RED as permitted. VR-004's
+hangup behavior was committed independently and is not a VR-006 deliverable.
+
+AC-01..AC-07 are witnessed by `tests/test_vr006_region_cdr.py` and unchanged
+old-callable regressions. Final combined suite: 589 passed, 1 skipped,
+9 warnings, not suppressed. AC-08's independent migration example and clean
+non-editable wheel smoke passed. AC-09 coordinates 0.1.14 without requiring
+VR-004 imports in VR-006 tests. Publication and consumer obligations remain
+pending. See [verification record](evidence/VR-004-VR-006-verification.md).
+
+Implementation decision: validate SDK page `_payload` through `_CallPage`
+before constructing public rows. SDK CallInstance datetime deserialization
+can erase malformed/offset timestamps, so validating already-deserialized
+instances could not satisfy the judged timestamp contract. Raw RFC-2822 dates
+are normalized before that lossy conversion; pages still use the SDK's
+`page`/`get_page`, preserving query tokens. Offset and malformed-date tests
+witness this choice. No scope change to the public five-field contract.
+
+No consumer, credential or deployment changes. The existing CDR callable is
+unchanged apart from its docstring. PR review, human merge, tag/publication
+and consumer pin/rollout remain pending.
+
+## Source references
 
 - [VR-002](VR-002-twilio-http-timeout.md) and its judgement; [VR-004](VR-004-region-aware-hangup.md).
 - [Call implementation](../voice_runtime/transports/twilio_call.py), [client boundary](../voice_runtime/transports/_twilio_client.py), [timeout tests](../tests/test_vr002_twilio_http_timeout.py).

@@ -2,7 +2,7 @@
 
 **Priority:** HIGH
 **Type:** Bug fix + explicit provider contract
-**Status:** Judged APPROVED (round 2, 2026-09-08) — docs only; not implemented.
+**Status:** Implemented on branch (2026-09-08) — verified offline; PR review and publication pending.
 Final verdict recorded for human review in [judgement history](VR-004-region-aware-hangup.judgement.md).
 **Requested:** 2026-08-17
 **Target release:** 0.1.14, shared with VR-006; 0.1.13 already shipped VR-005
@@ -180,7 +180,27 @@ The 2026-09-08 probe used fake HTTP and dummy credentials, zero network;
       changes documents only, not the manifest or runtime; implementation remains
       a later task after human review of the final judgement.
 
-## Sources
+## Implementation record (2026-09-08)
+
+Owner authorized enforcement after merging docs PR #4. Behavioral RED
+`599aedd` (76 failed / 13 passed) preceded GREEN `180c877`; the minimal
+importable model/signature skeleton and approved Pydantic declaration were
+included in RED, as permitted by the judgement. VR-006 owns the later read API.
+
+AC-01..AC-07 have offline witnesses in `tests/test_vr004_region_hangup.py`
+and the amended VR-003 media tests. The final combined suite is 589 passed,
+1 skipped, 9 warnings; warnings are reported, not suppressed. AC-08's migration
+example is executed by its own test. Clean non-editable wheel imports and fake
+regional requests passed with SDK 9.11.0. AC-09's separate authority is preserved:
+VR-004's example and wheel smoke import only its three exports. 0.1.14 is
+prepared, not published. See [verification record](evidence/VR-004-VR-006-verification.md).
+
+No production deviation from the approved hangup contract. `_twilio_client.py`
+remains the only SDK construction boundary; typed models live in the small
+`_twilio_models.py` module. No consumer, signature, deployment or secret edits.
+PR review, human merge, tag/publication and consumer pin/rollout remain pending.
+
+## Source references
 
 - [VR-002](VR-002-twilio-http-timeout.md) and its judgement; [VR-003](VR-003-rest-first-call-end-31921.md) and its judgement; [VR-006](VR-006-region-aware-cdr-read.md).
 - [NC-493](../../../customer-service-agent-platform/feature-requests/NC-493-region-aware-reaper-hangup.md), [NC-492](../../../customer-service-agent-platform/feature-requests/NC-492-reconciler-restoration.md).
