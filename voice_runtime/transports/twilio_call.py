@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import logging
 import os
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
-from ._twilio_client import build_twilio_client
+from ._twilio_client import build_explicit_twilio_client, build_twilio_client
 from ._twilio_models import TwilioCallNotFoundError as TwilioCallNotFoundError
 from ._twilio_models import TwilioRegion as TwilioRegion
+from ._twilio_models import validate_sid
 
 logger = logging.getLogger(__name__)
 
@@ -116,41 +117,54 @@ def initiate_outbound_call(phone: str) -> str:
 def hangup_call(
     call_sid: str, *, regions: tuple[TwilioRegion, ...] | None = None
 ) -> None:
-    """End a live call at the Twilio REST boundary (ninchat_voice NC-362).
+    """Complete a call, trying explicit regions only after 404/20404 absence.
 
-    Works regardless of the worker/session state — Twilio completes the
-    call and closes the media WS from its side.
-
-    Idempotent (VR-003): racing a simultaneous caller hangup must not
-    raise — 404 (call gone) and 400 with Twilio error 21220 (call not
-    in-progress) are success. Anything else propagates.
-
-    Raises:
-        RuntimeError: If Twilio credentials are missing.
+    Only a successful update or 400/21220 proves terminal state. Exhaustion
+    raises TwilioCallNotFoundError. Without regions, preserve ambient SDK
+    routing and account-token authentication, but never treat absence as success.
     """
     if regions is not None:
-        raise NotImplementedError("VR-004 explicit hangup")
+        validate_sid(call_sid)
+        if not isinstance(regions, tuple) or not regions:
+            raise ValueError("regions must be a nonempty tuple")
+        validated = tuple(TwilioRegion.model_validate(region) for region in regions)
+        hosts = tuple(region.api_host for region in validated)
+        if len(set(hosts)) != len(hosts):
+            raise ValueError("Region hosts must be distinct")
+        for region in validated:
+            if _complete_call(build_explicit_twilio_client(region), call_sid):
+                return
+        raise TwilioCallNotFoundError(hosts)
+
     account_sid, auth_token, _phone_number, _stream_url = _get_twilio_env()
     if not account_sid or not auth_token:
         raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
+    client = build_twilio_client(account_sid, auth_token)
+    if not _complete_call(client, call_sid):
+        host = urlsplit(client.get_hostname(client.api.base_url)).hostname
+        raise TwilioCallNotFoundError((host,))
 
+
+def _complete_call(client, call_sid: str) -> bool:
+    """Return false only on classified regional absence; propagate other errors."""
     from twilio.base.exceptions import TwilioRestException
 
     try:
-        build_twilio_client(account_sid, auth_token).calls(call_sid).update(
-            status="completed"
-        )
+        client.calls(call_sid).update(status="completed")
     except TwilioRestException as exc:
-        if exc.status == 404 or (exc.status == 400 and exc.code == 21220):
+        if exc.status == 404 and exc.code == 20404:
+            return False
+        if exc.status == 400 and exc.code == 21220:
             logger.info(
                 "Call already terminal: call_sid=%s (status=%s code=%s)",
                 call_sid,
                 exc.status,
                 exc.code,
             )
-            return
+            return True
         raise
     logger.info("Call hangup issued: call_sid=%s", call_sid)
+    return True
 
 
 def list_recent_calls(lookback_s: float = 3600.0) -> list[dict]:
