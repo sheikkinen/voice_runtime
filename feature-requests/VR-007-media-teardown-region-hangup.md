@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Bug fix (consumer-supplied regions for an existing call end)
-**Status:** Approved with revisions (folded 2026-10-01); promoted for enforcement
+**Status:** Implemented (2026-10-01); release 0.1.15 prepared locally, publication awaits the R-4 decision
 **Requested:** 2026-10-01
 **Effort:** 0.5 day (library only; CSAP wiring is a separate FR)
 **Target release:** 0.1.15
@@ -84,18 +84,48 @@ Live probe: one call created on IE1 to the operator's phone (`CA428c27d5fe4b8882
 
 Adopted verbatim from the judgement's revised criteria (R-2, R-3, R-4).
 
-- [ ] AC-01: A test-only behavioral RED commit adds `tests/test_vr007_media_teardown_regions.py`; failures are assertions against current behavior, not import, collection, or fixture errors. Every new or changed behavioral test carries `@pytest.mark.req("VR-007")`.
-- [ ] AC-02: The shared private validator returns a fully revalidated nonempty `tuple[TwilioRegion, ...]` with distinct hosts. Registration invokes it synchronously and retains that returned tuple. Empty tuple, list, duplicate hosts, later invalid object, and invalid `model_construct` instance each raise `ValueError` before route use/client construction, with no auth value in the exception.
-- [ ] AC-03: With validated `hangup_regions` supplied and both `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` unset, a requested disconnect invokes `hangup_call` exactly once through the existing off-loop worker with `regions=<validated tuple>`. When the fake Twilio transport then disconnects, no server-side `close(1000)` is emitted.
-- [ ] AC-04: With validated `hangup_regions` supplied, each of `TwilioCallNotFoundError`, `TwilioRestException(status=401, code=20003)`, and `requests.exceptions.ReadTimeout` from `hangup_call` produces exactly one server-side `close(1000)`, no retry, and no credential material in logs.
-- [ ] AC-05: With validated `hangup_regions` supplied and REST success but no Twilio-side disconnect before `REST_CLOSE_WAIT_S`, the existing bounded wait ends in exactly one server-side `close(1000)`.
-- [ ] AC-06: With `hangup_regions=None`, missing ambient credentials cause zero REST calls and exactly one server-side close; ambient credentials invoke `hangup_call(call_sid)` without `regions`; REST success followed by Twilio-side disconnect causes no server-side close; and ambient REST failure causes exactly one fallback close.
-- [ ] AC-07: `hangup_call` uses the shared validator while retaining VR-004 behavior: complete validation precedes client construction, 404/20404 alone advances the region sweep, 2xx or 400/21220 stops successfully, all-region absence raises `TwilioCallNotFoundError`, and any other provider/transport error propagates without a later attempt. Existing VR-004 focused tests pass without weakened assertions.
-- [ ] AC-08: WebSocket upgrade signature validation continues to use `TWILIO_AUTH_TOKEN`; supplying `hangup_regions` neither bypasses nor replaces that separate boundary. No new environment variables or consumer-specific key names are introduced.
-- [ ] AC-09: The full offline voice-runtime suite passes. Version metadata is `0.1.15`, `CHANGELOG.md` records VR-007, the sdist and wheel build successfully, `twine check` passes, and a clean non-editable wheel installation imports and exercises the changed registration API. No upload or tag operation is part of this criterion.
-- [ ] AC-10: The FR records implementation decisions, RED/GREEN witnesses, focused and full-suite results, artifact inspection, and any deviation. It keeps consumer wiring and field acceptance explicitly assigned to a separate CSAP FR.
+- [x] AC-01: A test-only behavioral RED commit adds `tests/test_vr007_media_teardown_regions.py`; failures are assertions against current behavior, not import, collection, or fixture errors. Every new or changed behavioral test carries `@pytest.mark.req("VR-007")`.
+- [x] AC-02: The shared private validator returns a fully revalidated nonempty `tuple[TwilioRegion, ...]` with distinct hosts. Registration invokes it synchronously and retains that returned tuple. Empty tuple, list, duplicate hosts, later invalid object, and invalid `model_construct` instance each raise `ValueError` before route use/client construction, with no auth value in the exception.
+- [x] AC-03: With validated `hangup_regions` supplied and both `TWILIO_ACCOUNT_SID` and `TWILIO_AUTH_TOKEN` unset, a requested disconnect invokes `hangup_call` exactly once through the existing off-loop worker with `regions=<validated tuple>`. When the fake Twilio transport then disconnects, no server-side `close(1000)` is emitted.
+- [x] AC-04: With validated `hangup_regions` supplied, each of `TwilioCallNotFoundError`, `TwilioRestException(status=401, code=20003)`, and `requests.exceptions.ReadTimeout` from `hangup_call` produces exactly one server-side `close(1000)`, no retry, and no credential material in logs.
+- [x] AC-05: With validated `hangup_regions` supplied and REST success but no Twilio-side disconnect before `REST_CLOSE_WAIT_S`, the existing bounded wait ends in exactly one server-side `close(1000)`.
+- [x] AC-06: With `hangup_regions=None`, missing ambient credentials cause zero REST calls and exactly one server-side close; ambient credentials invoke `hangup_call(call_sid)` without `regions`; REST success followed by Twilio-side disconnect causes no server-side close; and ambient REST failure causes exactly one fallback close.
+- [x] AC-07: `hangup_call` uses the shared validator while retaining VR-004 behavior: complete validation precedes client construction, 404/20404 alone advances the region sweep, 2xx or 400/21220 stops successfully, all-region absence raises `TwilioCallNotFoundError`, and any other provider/transport error propagates without a later attempt. Existing VR-004 focused tests pass without weakened assertions.
+- [x] AC-08: WebSocket upgrade signature validation continues to use `TWILIO_AUTH_TOKEN`; supplying `hangup_regions` neither bypasses nor replaces that separate boundary. No new environment variables or consumer-specific key names are introduced.
+- [x] AC-09: The full offline voice-runtime suite passes. Version metadata is `0.1.15`, `CHANGELOG.md` records VR-007, the sdist and wheel build successfully, `twine check` passes, and a clean non-editable wheel installation imports and exercises the changed registration API. No upload or tag operation is part of this criterion.
+- [x] AC-10: The FR records implementation decisions, RED/GREEN witnesses, focused and full-suite results, artifact inspection, and any deviation. It keeps consumer wiring and field acceptance explicitly assigned to a separate CSAP FR.
 
 **Release decision (R-4), open:** After implementation review and artifact inspection, do the required parties approve publishing and tagging voice-runtime 0.1.15? TestPyPI/PyPI upload and tag creation/push require that affirmative human decision; this FR's authority does not include them.
+
+## Implementation record (2026-10-01)
+
+**Commits:** RED `c4f2232` (test only), GREEN `6c39bb0`, then this record together with the release prep.
+
+**RED witness:** 15 tests failed, all on assertions: `register_voice_websocket` had no `hangup_regions` parameter, and `twilio_call` had no `_validated_regions` helper. There were no import or collection errors.
+
+**GREEN:** `twilio_call._validated_regions` is the one validator. `hangup_call` and `register_voice_websocket` both call it, and registration keeps the returned tuple. With regions supplied, `rest_hangup_first` skips the ambient-credential precheck and calls `hangup_call(sid, regions=...)` in `asyncio.to_thread`. With `None`, the code path is the old one. No environment reads were added; the only `getenv` lines in the diff are the existing ambient precheck, moved into the `None` branch.
+
+**Witness map** (`tests/test_vr007_media_teardown_regions.py`; every test carries `req("VR-007")`):
+
+| AC | Test |
+|---|---|
+| AC-02 | `TestRegistrationValidation::test_bad_tuple_rejected_before_route_use` (empty tuple, list, duplicate hosts, later invalid object, invalid `model_construct`) and `test_registration_and_hangup_call_share_one_validator` |
+| AC-03 | `TestExplicitRegionTeardown::test_regions_without_ambient_creds_rest_first` |
+| AC-04 | `TestExplicitRegionTeardown::test_rest_failure_falls_back_once` (one case per error class, with a log check for credentials) |
+| AC-05 | `TestExplicitRegionTeardown::test_no_twilio_close_bounded_wait_then_close` |
+| AC-06 | `TestAmbientModePreserved` (3 tests) |
+| AC-07 | `test_registration_and_hangup_call_share_one_validator`, plus `tests/test_vr004_region_hangup.py` unchanged and green |
+| AC-08 | `TestSignatureBoundaryUnchanged::test_bad_signature_rejected_with_regions` |
+
+**Suites:** focused 15 passed; full `pytest tests/` 604 passed, 1 skipped.
+
+**Artifact inspection (AC-09):** `pyproject.toml` is at 0.1.15, and `CHANGELOG.md` has a 0.1.15 VR-007 entry. `python -m build` produced the sdist and wheel. `twine check` passed on both; twine ran in a throwaway venv, and nothing was uploaded. A clean non-editable install of the wheel in a fresh venv imported the package, showed `hangup_regions` as keyword-only with a `None` default, and raised `ValueError("regions must be a nonempty tuple")` for `hangup_regions=()` at registration.
+
+**Deviations:**
+- The RED test's synchronous registration cases first used the VR-003 session factory, which needs a running event loop. GREEN switched them to a loop-free `VoiceSession`. The assertions did not change.
+- A bare `pytest` at the repo root also collects a stale VR-004 worktree under `tmp/worktrees/`, which fails with a conftest path mismatch. The suite of record is `pytest tests/`. The stale worktree is untracked local state and was left in place.
+
+**Not done under this authority:** TestPyPI/PyPI upload, tag creation or push (R-4 decision open), and CSAP wiring and field acceptance (separate CSAP FR).
 
 ## Consumer wiring (CSAP, separate change; does not gate this FR)
 

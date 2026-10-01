@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.15 - 2026-10-01
+
+### Fixed
+
+- **VR-007**: `register_voice_websocket(app, session, hangup_regions=...)`
+	accepts the VR-004 `TwilioRegion` tuple. It is validated at registration
+	by the same helper `hangup_call` uses, so an empty, non-tuple, duplicate
+	or invalid tuple raises `ValueError` before the route is registered.
+	When regions are supplied, the REST-first call end at media teardown
+	uses them and needs no ambient `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN`.
+	Any hangup failure still falls back to a single server-side
+	`close(1000)`. Omitting the argument keeps the ambient behaviour.
+	Upgrade signature validation still uses `TWILIO_AUTH_TOKEN`.
+
 ## 0.1.14 - 2026-09-08
 
 ### Fixed
