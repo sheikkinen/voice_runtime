@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Bug fix (consumer-supplied regions for an existing call end)
-**Status:** Implemented (2026-10-01); release 0.1.15 prepared locally, publication awaits the R-4 decision
+**Status:** Implemented and released as 0.1.15 (2026-10-01)
 **Requested:** 2026-10-01
 **Effort:** 0.5 day (library only; CSAP wiring is a separate FR)
 **Target release:** 0.1.15
@@ -95,7 +95,7 @@ Adopted verbatim from the judgement's revised criteria (R-2, R-3, R-4).
 - [x] AC-09: The full offline voice-runtime suite passes. Version metadata is `0.1.15`, `CHANGELOG.md` records VR-007, the sdist and wheel build successfully, `twine check` passes, and a clean non-editable wheel installation imports and exercises the changed registration API. No upload or tag operation is part of this criterion.
 - [x] AC-10: The FR records implementation decisions, RED/GREEN witnesses, focused and full-suite results, artifact inspection, and any deviation. It keeps consumer wiring and field acceptance explicitly assigned to a separate CSAP FR.
 
-**Release decision (R-4), open:** After implementation review and artifact inspection, do the required parties approve publishing and tagging voice-runtime 0.1.15? TestPyPI/PyPI upload and tag creation/push require that affirmative human decision; this FR's authority does not include them.
+**Release decision (R-4), closed 2026-10-01:** The owner instructed "publish" after reviewing the implementation record. Before tagging, a clean rebuild from `1ae33ed` passed `twine check` on both artifacts, and the wheel listing held no `feature-requests/`, `.env` or `tests/` entries. Annotated tag `v0.1.15` on `1ae33ed` started `.github/workflows/publish.yml`, which passed test, version gate, build, PyPI trusted publishing and GitHub Release creation. A fresh venv installed `voice-runtime==0.1.15` from PyPI and showed the keyword-only `hangup_regions` parameter.
 
 ## Implementation record (2026-10-01)
 
@@ -125,7 +125,7 @@ Adopted verbatim from the judgement's revised criteria (R-2, R-3, R-4).
 - The RED test's synchronous registration cases first used the VR-003 session factory, which needs a running event loop. GREEN switched them to a loop-free `VoiceSession`. The assertions did not change.
 - A bare `pytest` at the repo root also collects a stale VR-004 worktree under `tmp/worktrees/`, which fails with a conftest path mismatch. The suite of record is `pytest tests/`. The stale worktree is untracked local state and was left in place.
 
-**Not done under this authority:** TestPyPI/PyPI upload, tag creation or push (R-4 decision open), and CSAP wiring and field acceptance (separate CSAP FR).
+**Not done under this authority:** TestPyPI (the CI route publishes straight to PyPI, as for 0.1.14), and CSAP wiring and field acceptance (separate CSAP FR).
 
 ## Consumer wiring (CSAP, separate change; does not gate this FR)
 
