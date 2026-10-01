@@ -120,6 +120,17 @@ def initiate_outbound_call(phone: str) -> str:
     return call.sid
 
 
+def _validated_regions(regions: object) -> tuple[TwilioRegion, ...]:
+    """Revalidate an explicit region tuple; reject empty, non-tuple, duplicates."""
+    if not isinstance(regions, tuple) or not regions:
+        raise ValueError("regions must be a nonempty tuple")
+    validated = tuple(TwilioRegion.model_validate(region) for region in regions)
+    hosts = tuple(region.api_host for region in validated)
+    if len(set(hosts)) != len(hosts):
+        raise ValueError("Region hosts must be distinct")
+    return validated
+
+
 def hangup_call(
     call_sid: str, *, regions: tuple[TwilioRegion, ...] | None = None
 ) -> None:
@@ -131,16 +142,11 @@ def hangup_call(
     """
     if regions is not None:
         validate_sid(call_sid)
-        if not isinstance(regions, tuple) or not regions:
-            raise ValueError("regions must be a nonempty tuple")
-        validated = tuple(TwilioRegion.model_validate(region) for region in regions)
-        hosts = tuple(region.api_host for region in validated)
-        if len(set(hosts)) != len(hosts):
-            raise ValueError("Region hosts must be distinct")
+        validated = _validated_regions(regions)
         for region in validated:
             if _complete_call(build_explicit_twilio_client(region), call_sid):
                 return
-        raise TwilioCallNotFoundError(hosts)
+        raise TwilioCallNotFoundError(tuple(region.api_host for region in validated))
 
     account_sid, auth_token, _phone_number, _stream_url = _get_twilio_env()
     if not account_sid or not auth_token:

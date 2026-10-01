@@ -39,6 +39,13 @@ def _regions() -> tuple[TwilioRegion, ...]:
     )
 
 
+def _bare_session():
+    """Loop-free session: registration is synchronous and needs no loop."""
+    from voice_runtime.session import VoiceSession
+
+    return VoiceSession()
+
+
 def _register(session, **kwargs):
     """Register the route; return (app mock, captured endpoint)."""
     from voice_runtime.transports.twilio_ws import register_voice_websocket
@@ -130,7 +137,7 @@ class TestRegistrationValidation:
         app = MagicMock()
         with pytest.raises(ValueError) as caught:
             register_voice_websocket(
-                app, _make_session(), hangup_regions=candidates[which]
+                app, _bare_session(), hangup_regions=candidates[which]
             )
         assert "secret" not in str(caught.value)
         app.websocket.assert_not_called()
@@ -150,7 +157,7 @@ class TestRegistrationValidation:
             return real(regions)
 
         monkeypatch.setattr(twilio_call, "_validated_regions", spy)
-        _register(_make_session(), hangup_regions=_regions())
+        _register(_bare_session(), hangup_regions=_regions())
         assert len(seen) == 1
         with pytest.raises(ValueError):
             twilio_call.hangup_call(SID, regions=())

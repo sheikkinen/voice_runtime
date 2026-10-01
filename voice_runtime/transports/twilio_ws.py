@@ -24,7 +24,8 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-from voice_runtime.transports.twilio_call import hangup_call
+from voice_runtime.transports import twilio_call
+from voice_runtime.transports.twilio_call import TwilioRegion, hangup_call
 
 if TYPE_CHECKING:
     from voice_runtime.session import VoiceSession
@@ -74,13 +75,25 @@ def _validate_twilio_signature(websocket: WebSocket) -> bool:
     return validator.validate(full_url, {}, signature)
 
 
-def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
+def register_voice_websocket(
+    app: FastAPI,
+    session: VoiceSession,
+    *,
+    hangup_regions: tuple[TwilioRegion, ...] | None = None,
+) -> None:
     """Register the Twilio Media Streams WebSocket handler.
 
     Args:
         app: FastAPI application to register the route on.
         session: VoiceSession to use for audio queues and call state.
+        hangup_regions: VR-007 explicit regions for the REST-first call end;
+            None keeps ambient account-token mode.
     """
+    regions = (
+        None
+        if hangup_regions is None
+        else twilio_call._validated_regions(hangup_regions)
+    )
 
     @app.websocket("/voice")
     async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -143,11 +156,16 @@ def register_voice_websocket(app: FastAPI, session: VoiceSession) -> None:
             call_sid = session.call_sid
             if not call_sid:
                 return False
-            if not (os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")):
+            if regions is None and not (
+                os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN")
+            ):
                 return False
             try:
                 # Blocking SDK call — must not stall the media event loop
-                await asyncio.to_thread(hangup_call, call_sid)
+                if regions is None:
+                    await asyncio.to_thread(hangup_call, call_sid)
+                else:
+                    await asyncio.to_thread(hangup_call, call_sid, regions=regions)
             except Exception as exc:
                 logger.warning(
                     "REST hangup failed (%s) — falling back to WS close", exc
