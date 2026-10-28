@@ -2,14 +2,14 @@
 
 **Priority:** MEDIUM
 **Type:** Feature (opt-in provider configuration)
-**Status:** Proposed (revised after REJECTED draft judgement 2026-10-28; R-1 to R-4 folded; awaiting fresh judgement)
+**Status:** Approved with revisions (round 2, 2026-10-28); R-1 to R-3 folded. Ready for enforcement.
 **Requested:** 2026-10-28
 **Effort:** 0.5 day (library only; CSAP wiring and field test are CSAP NC-566)
-**Target release:** 0.1.16 (CSAP NC-566 pins this number; if VR-008 ships first, NC-566 records the actual number)
+**Target release:** the next **minor** release from the actual release baseline at enforcement (judgement R-2; `reference/release-checklist.md`: new features are MINOR). From today's 0.1.15 that is 0.2.0; CSAP NC-566 pins the number actually released.
 **First consumer:** CSAP. Its TEST worker sets `AZURE_STT_LANGUAGES=fi-FI,sv-SE,en-GB` (CSAP NC-566).
 **Research:** [evidence/VR-009-research.md](evidence/VR-009-research.md) (provider constraints, SDK probe, six solution classes, prior-art dispositions, graph-fit)
 **Prior art:** NC-161 (Azure persistent STT), NC-258 (reconnect), VR-005 (task ownership); CSAP research `docs/2026-10-28-i18n-vs-finnish-bindings-research.md` (§3 provider matrix, Option 2, probe P2).
-**Judgement:** first draft REJECTED 2026-10-28 (gpt-5.6-sol, session `d0c0fdab`): uncommitted research, parser and latency contracts underspecified, live-probe approval missing. Revisions R-1 to R-4 folded below.
+**Judgement:** [VR-009-azure-stt-language-identification.judgement.md](VR-009-azure-stt-language-identification.judgement.md). Round 1 REJECTED 2026-10-28 (session `d0c0fdab`; R-1 to R-4 folded). Round 2 APPROVED WITH REVISIONS 2026-10-28 (SDK floor proof, minor version, README/.env.example; folded as AC-09, AC-11, AC-12).
 
 ## Problem and ideal result
 
@@ -106,7 +106,9 @@ SDK surface checked in the CSAP venv (`azure-cognitiveservices-speech` 1.51.0; v
   - the same Finnish clip in single-locale mode as a `commit_lag_ms` baseline.
 
   A `Canceled` error from the v2 endpoint, unsupported-region behaviour, or failure to identify the two clips' languages blocks release; it is recorded as failure evidence, not acceptance.
-- [ ] AC-09: The full offline suite passes (`pytest tests/`). Version metadata and `CHANGELOG.md` record VR-009. The sdist and wheel build, `twine check` passes, and a clean non-editable wheel install constructs the provider in single-locale mode with `AZURE_STT_LANGUAGES` unset and in LID mode with it set. Tagging and publishing need the owner's explicit "publish", as for VR-007.
+- [ ] AC-09: The full offline suite passes (`pytest tests/`). Version metadata (next minor, R-2) and `CHANGELOG.md` record VR-009. The sdist and wheel build, `twine check` passes, and a clean non-editable wheel install constructs the provider in single-locale mode with `AZURE_STT_LANGUAGES` unset and in LID mode with it set. Tagging and publishing need the owner's explicit "publish", as for VR-007.
+- [ ] AC-11 (SDK floor, judgement R-1): in a clean venv with exactly `azure-cognitiveservices-speech==1.38.0`, the SDK-surface probe (`AutoDetectSourceLanguageConfig`, `AutoDetectSourceLanguageResult`, `PropertyId.SpeechServiceConnection_LanguageIdMode`, `SpeechConfig(subscription=..., endpoint=...)`) and AC-02 to AC-07 pass; the command and output are recorded here. If any surface fails, the `azure` extra floor in `pyproject.toml` is raised to the lowest version shown by the same probe to pass, and AC-02 to AC-07 plus the clean-wheel check are rerun against exactly that version.
+- [ ] AC-12 (documentation, judgement R-3): `README.md` documents `languages=` and `AZURE_STT_LANGUAGES` in the Azure STT section and adds the variable to the environment table; `.env.example` gains a commented example. The text states: comma-separated full locales; one locale = single-locale mode; two or more = continuous LID; at most 10 and distinct base languages; an invalid env value fails at import; Azure always returns one of the candidates; unset keeps `language_code`.
 - [ ] AC-10: The FR records implementation decisions, RED/GREEN commits, suite results, the AC-08 probe output and any deviation. Consumer wiring and field acceptance stay assigned to CSAP NC-566.
 
 ## Research and alternatives
