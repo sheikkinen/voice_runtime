@@ -3,6 +3,7 @@
 NC-161: Azure Speech-to-Text using push stream with native MULAW 8kHz.
 NC-166: Simplified — fires on_committed callback, consumer decides routing.
 NC-258: Canceled signal handling, reconnect with backoff, on_error callback.
+VR-009: opt-in continuous language identification (AZURE_STT_LANGUAGES).
 
 AzurePersistentStt: continuous recognition for full call duration.
   - No streaming duration limit (unlike ElevenLabs/GCP)
@@ -20,8 +21,9 @@ import contextlib
 import logging
 import os
 import random
+import re
 import time
-from collections.abc import Callable, Coroutine
+from collections.abc import Callable, Coroutine, Sequence
 from typing import Any
 
 import azure.cognitiveservices.speech as speechsdk
@@ -31,6 +33,43 @@ logger = logging.getLogger(__name__)
 AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY", "")
 AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION", "westeurope")
 ECHO_DISCARD_WINDOW_S = 0.4
+
+_LOCALE_RE = re.compile(r"^[a-z]{2,3}-[A-Z]{2}$")
+_MAX_LID_LANGUAGES = 10  # Azure continuous LID candidate limit
+
+
+def _parse_languages(raw: str | Sequence[str] | None) -> tuple[str, ...]:
+    """Normalize a candidate-locale list; () means not configured (VR-009)."""
+    if raw is None:
+        return ()
+    items = raw.split(",") if isinstance(raw, str) else list(raw)
+    locales: list[str] = []
+    for item in items:
+        if not isinstance(item, str):
+            raise ValueError(f"STT language {item!r} is not a string")
+        locale = item.strip()
+        if not locale:
+            continue
+        if not _LOCALE_RE.match(locale):
+            raise ValueError(
+                f"STT language {locale!r} is not a full locale like 'fi-FI'"
+            )
+        locales.append(locale)
+    bases = [locale.split("-")[0] for locale in locales]
+    duplicates = sorted({base for base in bases if bases.count(base) > 1})
+    if duplicates:
+        raise ValueError(
+            f"STT languages repeat base language(s) {', '.join(duplicates)}"
+        )
+    if len(locales) > _MAX_LID_LANGUAGES:
+        raise ValueError(
+            f"STT languages list {len(locales)} locales; "
+            f"at most {_MAX_LID_LANGUAGES} allowed"
+        )
+    return tuple(locales)
+
+
+_ENV_LANGUAGES = _parse_languages(os.getenv("AZURE_STT_LANGUAGES"))
 
 
 class AzurePersistentStt:
@@ -52,10 +91,16 @@ class AzurePersistentStt:
         region: str | None = None,
         language_code: str = "fi-FI",
         silence_timeout_ms: int = 1500,
+        languages: Sequence[str] | None = None,
     ) -> None:
         self._subscription_key = subscription_key or os.getenv("AZURE_SPEECH_KEY", "")
         self._region = region or os.getenv("AZURE_SPEECH_REGION", "westeurope")
         self._language_code = language_code
+        locales = _ENV_LANGUAGES if languages is None else _parse_languages(languages)
+        if len(locales) == 1:
+            self._language_code = locales[0]
+        self._lid_languages = locales if len(locales) > 1 else ()
+        self._interim_at: float | None = None  # VR-009 commit_lag_ms state
         self._silence_timeout_ms = silence_timeout_ms
         self._loop: asyncio.AbstractEventLoop | None = None
         self._speaking = False
@@ -85,6 +130,23 @@ class AzurePersistentStt:
         self._loop = asyncio.get_running_loop()
         self._stopping = False
 
+        self._build_recognizer()
+        self._recognizer.start_continuous_recognition_async().get()
+
+        self._feed_task = asyncio.create_task(
+            self._feed_audio(inbound_queue),
+            name="azure_stt_feed",
+        )
+        if self._lid_languages:
+            logger.info(
+                "AzurePersistentStt started (lid=continuous langs=%s)",
+                ",".join(self._lid_languages),
+            )
+        else:
+            logger.info("AzurePersistentStt started (lang=%s)", self._language_code)
+
+    def _build_recognizer(self) -> None:
+        """Create push stream + recognizer for start() and _reconnect() (VR-009)."""
         # Audio format: MULAW 8kHz mono
         stream_format = speechsdk.audio.AudioStreamFormat(
             samples_per_second=8000,
@@ -95,11 +157,29 @@ class AzurePersistentStt:
         self._push_stream = speechsdk.audio.PushAudioInputStream(stream_format)
         audio_config = speechsdk.audio.AudioConfig(stream=self._push_stream)
 
-        speech_config = speechsdk.SpeechConfig(
-            subscription=self._subscription_key,
-            region=self._region,
-        )
-        speech_config.speech_recognition_language = self._language_code
+        lid_kwargs: dict[str, Any] = {}
+        if self._lid_languages:
+            # Continuous LID requires the endpoint form of SpeechConfig.
+            speech_config = speechsdk.SpeechConfig(
+                subscription=self._subscription_key,
+                endpoint=f"wss://{self._region}.stt.speech.microsoft.com"
+                "/speech/universal/v2",
+            )
+            speech_config.set_property(
+                speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
+                "Continuous",
+            )
+            lid_kwargs["auto_detect_source_language_config"] = (
+                speechsdk.languageconfig.AutoDetectSourceLanguageConfig(
+                    languages=list(self._lid_languages),
+                )
+            )
+        else:
+            speech_config = speechsdk.SpeechConfig(
+                subscription=self._subscription_key,
+                region=self._region,
+            )
+            speech_config.speech_recognition_language = self._language_code
         speech_config.set_property(
             speechsdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
             str(self._silence_timeout_ms),
@@ -108,18 +188,11 @@ class AzurePersistentStt:
         self._recognizer = speechsdk.SpeechRecognizer(
             speech_config=speech_config,
             audio_config=audio_config,
+            **lid_kwargs,
         )
         self._recognizer.recognized.connect(self._on_committed)
         self._recognizer.recognizing.connect(self._on_recognizing)
         self._recognizer.canceled.connect(self._on_canceled)  # NC-258
-
-        self._recognizer.start_continuous_recognition_async().get()
-
-        self._feed_task = asyncio.create_task(
-            self._feed_audio(inbound_queue),
-            name="azure_stt_feed",
-        )
-        logger.info("AzurePersistentStt started (lang=%s)", self._language_code)
 
     async def stop(self) -> None:
         """Stop continuous recognition and close push stream.
@@ -254,30 +327,7 @@ class AzurePersistentStt:
                 self._push_stream.close()
 
         # 3. Re-create push stream + recognizer (same config)
-        stream_format = speechsdk.audio.AudioStreamFormat(
-            samples_per_second=8000,
-            bits_per_sample=8,
-            channels=1,
-            wave_stream_format=speechsdk.AudioStreamWaveFormat.MULAW,
-        )
-        self._push_stream = speechsdk.audio.PushAudioInputStream(stream_format)
-        audio_config = speechsdk.audio.AudioConfig(stream=self._push_stream)
-        speech_config = speechsdk.SpeechConfig(
-            subscription=self._subscription_key,
-            region=self._region,
-        )
-        speech_config.speech_recognition_language = self._language_code
-        speech_config.set_property(
-            speechsdk.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
-            str(self._silence_timeout_ms),
-        )
-        self._recognizer = speechsdk.SpeechRecognizer(
-            speech_config=speech_config,
-            audio_config=audio_config,
-        )
-        self._recognizer.recognized.connect(self._on_committed)
-        self._recognizer.recognizing.connect(self._on_recognizing)
-        self._recognizer.canceled.connect(self._on_canceled)
+        self._build_recognizer()
         self._recognizer.start_continuous_recognition_async().get()
 
     def _on_committed(self, evt: Any) -> None:
@@ -285,16 +335,32 @@ class AzurePersistentStt:
 
         NC-166: No routing decisions. Echo discard is acoustic boundary
         concern; everything else is consumer policy.
+        VR-009: every path consumes the interim timestamp; forwarded
+        transcripts log language, lag and length, never the text.
         """
+        interim_at, self._interim_at = self._interim_at, None
         text = evt.result.text
         if self._speaking:
             return
-        if time.monotonic() < self._discard_until:
+        now = time.monotonic()
+        if now < self._discard_until:
             logger.info("discarding echo committed: %r", text)
             return
         cleaned = text.strip()
         if not cleaned:
             return
+        lag_ms = -1 if interim_at is None else round((now - interim_at) * 1000)
+        lang = (
+            speechsdk.AutoDetectSourceLanguageResult(evt.result).language
+            if self._lid_languages
+            else self._language_code
+        )
+        logger.info(
+            "Azure STT committed lang=%s commit_lag_ms=%d chars=%d",
+            lang,
+            lag_ms,
+            len(cleaned),
+        )
         if self.on_committed:
             self.on_committed(cleaned)
 
@@ -303,11 +369,11 @@ class AzurePersistentStt:
 
         NC-199: Signals that the user is still speaking.
         """
-        text = evt.result.text
-        if self._speaking:
-            return
-        cleaned = text.strip()
+        cleaned = evt.result.text.strip()
         if not cleaned:
+            return
+        self._interim_at = time.monotonic()
+        if self._speaking:
             return
         if self.on_recognizing:
             self.on_recognizing(cleaned)
