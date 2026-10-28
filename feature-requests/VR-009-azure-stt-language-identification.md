@@ -123,7 +123,7 @@ SDK surface checked in the CSAP venv (`azure-cognitiveservices-speech` 1.51.0; v
 
 **Mutation probe.** Replacing the timestamp swap with a read that does not clear it turned 4 observability tests red (second commit, speaking discard, echo discard, empty commit); reverted.
 
-**Suites.** Full offline suite, dev venv (Python 3.14.7, SDK 1.51.2): 636 passed, 1 skipped (baseline before RED: 604 passed, 1 skipped).
+**Suites.** Full offline suite, dev venv (Python 3.14.7, SDK 1.51.2): 636 passed, 1 skipped (baseline before RED: 604 passed, 1 skipped). Clean Python 3.11 venv (`.[dev,azure,elevenlabs]`, the CI floor): 636 passed, 1 skipped. Python 3.12 is not installed locally; the tag-triggered `publish.yml` matrix covers it, and the repo has no PR-triggered CI.
 
 **AC-11, SDK floor.** Clean venv `/tmp/vr009-floor`, `pip install ".[dev]" "azure-cognitiveservices-speech==1.38.0"`. Surface probe output:
 
