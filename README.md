@@ -380,6 +380,27 @@ await stt.start(session.inbound)
 
 Same `SttProvider` protocol as ElevenLabs. Echo discard window (400ms) after TTS ends.
 
+**Language identification (VR-009, opt-in).** Pass candidate locales with
+`languages=` or set `AZURE_STT_LANGUAGES` (comma-separated full locales):
+
+```python
+stt = create_stt(provider="azure", languages=["fi-FI", "sv-SE", "en-GB"])
+```
+
+- Unset or empty: single-locale mode with `language_code`, unchanged.
+- One locale: single-locale mode with that locale.
+- Two or more: continuous language identification; each phrase is
+  recognized in one of the candidates. Azure always returns one of the
+  candidates, even for speech in another language.
+- Full locales only (`fi-FI`, not `fi`), at most 10, and each base language
+  once (not `en-US` with `en-GB`). Invalid input raises `ValueError`; an
+  invalid `AZURE_STT_LANGUAGES` fails at import of the Azure STT module.
+- An explicit `languages=` (including `[]`) overrides the env variable.
+- Every forwarded transcript logs
+  `Azure STT committed lang=<locale> commit_lag_ms=<int> chars=<int>`
+  (detected or configured locale; transcript text is never logged).
+  `on_committed` still receives only the text.
+
 ### SttTee (Dual STT)
 
 Fan-out adapter running two STT providers on the same audio stream:
@@ -421,6 +442,7 @@ mixed = mix_frames(caller_chunk, agent_chunk)  # mix two 160-byte frames
 | `AZURE_SPEECH_KEY` | Azure Speech SDK authentication | For Azure |
 | `AZURE_SPEECH_REGION` | Azure Speech SDK region | No (default: `westeurope`) |
 | `AZURE_TTS_VOICE` | Azure TTS voice name | No (default: `fi-FI-NooraNeural`) |
+| `AZURE_STT_LANGUAGES` | Azure STT candidate locales, comma-separated; 2+ enables continuous language identification (VR-009) | No (default: unset = `language_code`) |
 | `VOICE_MONITOR` | Enable AudioMixer monitoring | No (default: off) |
 
 ## Transport: SMS (NC-193)
