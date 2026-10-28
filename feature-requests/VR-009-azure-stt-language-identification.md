@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature (opt-in provider configuration)
-**Status:** Approved with revisions (round 2, 2026-10-28); R-1 to R-3 folded. Ready for enforcement.
+**Status:** Enforced 2026-10-28 (RED `e800039`, GREEN `06201d8`); version 0.2.0 prepared, not tagged or published (owner decision, C-6). Judged: approved with revisions (round 2, 2026-10-28); R-1 to R-3 folded.
 **Requested:** 2026-10-28
 **Effort:** 0.5 day (library only; CSAP wiring and field test are CSAP NC-566)
 **Target release:** the next **minor** release from the actual release baseline at enforcement (judgement R-2; `reference/release-checklist.md`: new features are MINOR). From today's 0.1.15 that is 0.2.0; CSAP NC-566 pins the number actually released.
@@ -75,19 +75,19 @@ SDK surface checked in the CSAP venv (`azure-cognitiveservices-speech` 1.51.0; v
 
 ## Acceptance criteria
 
-- [ ] AC-01: A test-only RED commit adds `tests/test_vr009_azure_stt_language_id.py`. Failures are assertions against current behaviour, not import, collection or fixture errors. Every new test carries `@pytest.mark.req("VR-009")`.
-- [ ] AC-02: `_parse_languages` implements Proposed solution 2 exactly:
+- [x] AC-01: A test-only RED commit adds `tests/test_vr009_azure_stt_language_id.py`. Failures are assertions against current behaviour, not import, collection or fixture errors. Every new test carries `@pytest.mark.req("VR-009")`.
+- [x] AC-02: `_parse_languages` implements Proposed solution 2 exactly:
   - returns `()` for `None`, `""`, `" , "`, `()` and `["", " "]`;
   - returns `("fi-FI", "sv-SE", "en-GB")` for `" fi-FI, sv-SE ,en-GB "`, `("fi-FI", "sv-SE", "en-GB")` and `[" fi-FI", "sv-SE ", "en-GB"]`;
   - raises `ValueError` for `"fi"` (no region), `"fi_FI"` (wrong separator), `"en-US,en-GB"` (duplicate base language), 11 distinct valid locales, and `["fi-FI", 1]` (non-string item).
-- [ ] AC-03: With `AZURE_STT_LANGUAGES` unset and no `languages` argument, the recognizer is built with `SpeechConfig(subscription=..., region=...)`, `speech_recognition_language == "fi-FI"`, and no `auto_detect_source_language_config`. The same holds after `_reconnect()`. The existing tests in `tests/test_azure_stt.py` pass without weakened assertions.
-- [ ] AC-04: With `languages=("fi-FI", "sv-SE", "en-GB")`:
+- [x] AC-03: With `AZURE_STT_LANGUAGES` unset and no `languages` argument, the recognizer is built with `SpeechConfig(subscription=..., region=...)`, `speech_recognition_language == "fi-FI"`, and no `auto_detect_source_language_config`. The same holds after `_reconnect()`. The existing tests in `tests/test_azure_stt.py` pass without weakened assertions.
+- [x] AC-04: With `languages=("fi-FI", "sv-SE", "en-GB")`:
   - `SpeechConfig` is built from `endpoint="wss://swedencentral.stt.speech.microsoft.com/speech/universal/v2"` (region injected as `swedencentral`) and the subscription key;
   - `SpeechServiceConnection_LanguageIdMode` is set to `"Continuous"`;
   - `speech_recognition_language` is not set;
   - `SpeechRecognizer` receives an `AutoDetectSourceLanguageConfig` whose languages are exactly those three, in that order.
-- [ ] AC-05: AC-04's configuration is rebuilt identically by `_reconnect()`. The test asserts the second recognizer's construction arguments, not just that a recognizer exists.
-- [ ] AC-06: In LID mode a committed result whose detected language is `sv-SE` calls `on_committed` with the stripped text and logs `lang=sv-SE` with an integer `commit_lag_ms` and `chars` equal to the stripped length. The log record does not contain the transcript text. In single-locale mode the line carries the configured locale. Timing tests with a patched `time.monotonic`:
+- [x] AC-05: AC-04's configuration is rebuilt identically by `_reconnect()`. The test asserts the second recognizer's construction arguments, not just that a recognizer exists.
+- [x] AC-06: In LID mode a committed result whose detected language is `sv-SE` calls `on_committed` with the stripped text and logs `lang=sv-SE` with an integer `commit_lag_ms` and `chars` equal to the stripped length. The log record does not contain the transcript text. In single-locale mode the line carries the configured locale. Timing tests with a patched `time.monotonic`:
   - no interim event → `commit_lag_ms=-1`;
   - interim then commit → the exact integer difference;
   - two consecutive commits with one interim before the first → the second logs `-1`;
@@ -95,21 +95,76 @@ SDK surface checked in the CSAP venv (`azure-cognitiveservices-speech` 1.51.0; v
   - the same for an echo-window discard.
 
   The echo-discard cases still drop the result and log no `committed` line.
-- [ ] AC-07: The module-level env path is tested with `importlib.reload` under monkeypatched env:
+- [x] AC-07: The module-level env path is tested with `importlib.reload` under monkeypatched env:
   - `AZURE_STT_LANGUAGES=fi-FI,sv-SE,en-GB` → a default-constructed provider is in LID mode;
   - the same env plus `languages=()` → single-locale mode; plus `languages=["sv-SE"]` → single-locale `sv-SE` (explicit sequence wins);
   - `AZURE_STT_LANGUAGES=fi` → `ValueError` at reload, which is import time.
-- [ ] AC-08: One live probe outside the unit suite, recorded in this FR. **Owner approval (R-4): granted 2026-10-28 by Sami Heikkinen** to use the configured Azure subscription with synthetic, non-personal Finnish and Swedish clips only. A script feeds an 8 kHz μ-law Swedish clip and a Finnish clip through `AzurePersistentStt(languages=("fi-FI","sv-SE","en-GB"))`. The probe records:
+- [x] AC-08: One live probe outside the unit suite, recorded in this FR. **Owner approval (R-4): granted 2026-10-28 by Sami Heikkinen** to use the configured Azure subscription with synthetic, non-personal Finnish and Swedish clips only. A script feeds an 8 kHz μ-law Swedish clip and a Finnish clip through `AzurePersistentStt(languages=("fi-FI","sv-SE","en-GB"))`. The probe records:
   - the region used and the package/SDK versions;
   - clip provenance (how each synthetic clip was produced);
   - each committed line's `lang` and `commit_lag_ms`, and the clip's text (synthetic, so safe to record);
   - the same Finnish clip in single-locale mode as a `commit_lag_ms` baseline.
 
   A `Canceled` error from the v2 endpoint, unsupported-region behaviour, or failure to identify the two clips' languages blocks release; it is recorded as failure evidence, not acceptance.
-- [ ] AC-09: The full offline suite passes (`pytest tests/`). Version metadata (next minor, R-2) and `CHANGELOG.md` record VR-009. The sdist and wheel build, `twine check` passes, and a clean non-editable wheel install constructs the provider in single-locale mode with `AZURE_STT_LANGUAGES` unset and in LID mode with it set. Tagging and publishing need the owner's explicit "publish", as for VR-007.
-- [ ] AC-11 (SDK floor, judgement R-1): in a clean venv with exactly `azure-cognitiveservices-speech==1.38.0`, the SDK-surface probe (`AutoDetectSourceLanguageConfig`, `AutoDetectSourceLanguageResult`, `PropertyId.SpeechServiceConnection_LanguageIdMode`, `SpeechConfig(subscription=..., endpoint=...)`) and AC-02 to AC-07 pass; the command and output are recorded here. If any surface fails, the `azure` extra floor in `pyproject.toml` is raised to the lowest version shown by the same probe to pass, and AC-02 to AC-07 plus the clean-wheel check are rerun against exactly that version.
-- [ ] AC-12 (documentation, judgement R-3): `README.md` documents `languages=` and `AZURE_STT_LANGUAGES` in the Azure STT section and adds the variable to the environment table; `.env.example` gains a commented example. The text states: comma-separated full locales; one locale = single-locale mode; two or more = continuous LID; at most 10 and distinct base languages; an invalid env value fails at import; Azure always returns one of the candidates; unset keeps `language_code`.
-- [ ] AC-10: The FR records implementation decisions, RED/GREEN commits, suite results, the AC-08 probe output and any deviation. Consumer wiring and field acceptance stay assigned to CSAP NC-566.
+- [x] AC-09: The full offline suite passes (`pytest tests/`). Version metadata (next minor, R-2) and `CHANGELOG.md` record VR-009. The sdist and wheel build, `twine check` passes, and a clean non-editable wheel install constructs the provider in single-locale mode with `AZURE_STT_LANGUAGES` unset and in LID mode with it set. Tagging and publishing need the owner's explicit "publish", as for VR-007.
+- [x] AC-11 (SDK floor, judgement R-1): in a clean venv with exactly `azure-cognitiveservices-speech==1.38.0`, the SDK-surface probe (`AutoDetectSourceLanguageConfig`, `AutoDetectSourceLanguageResult`, `PropertyId.SpeechServiceConnection_LanguageIdMode`, `SpeechConfig(subscription=..., endpoint=...)`) and AC-02 to AC-07 pass; the command and output are recorded here. If any surface fails, the `azure` extra floor in `pyproject.toml` is raised to the lowest version shown by the same probe to pass, and AC-02 to AC-07 plus the clean-wheel check are rerun against exactly that version.
+- [x] AC-12 (documentation, judgement R-3): `README.md` documents `languages=` and `AZURE_STT_LANGUAGES` in the Azure STT section and adds the variable to the environment table; `.env.example` gains a commented example. The text states: comma-separated full locales; one locale = single-locale mode; two or more = continuous LID; at most 10 and distinct base languages; an invalid env value fails at import; Azure always returns one of the candidates; unset keeps `language_code`.
+- [x] AC-10: The FR records implementation decisions, RED/GREEN commits, suite results, the AC-08 probe output and any deviation. Consumer wiring and field acceptance stay assigned to CSAP NC-566.
+
+## Implementation record (2026-10-28)
+
+**Commits.** RED `e800039` adds `tests/test_vr009_azure_stt_language_id.py` (32 tests): 31 failed on assertions against the old code (30 `AssertionError`, 1 `DID NOT RAISE`); the unset-env single-locale preservation test passed, as it should. GREEN `06201d8` changes only `voice_runtime/providers/azure_stt.py` (379 lines; `_parse_languages` radon C/12, gate is 21).
+
+**Decisions.**
+- `_build_recognizer()` creates the push stream, audio config, speech config and recognizer and connects the three callbacks; `start()` and `_reconnect()` both call it and then start continuous recognition. Single-locale construction is byte-for-byte today's.
+- `commit_lag_ms = round((now - interim_at) * 1000)`. The interim timestamp is set in `_on_recognizing` for every nonempty interim, also while TTS is speaking (it is a received event; the callback is still suppressed while speaking), and `_on_committed` swaps it to `None` on its first line, so every path clears it.
+- `_on_recognizing` now strips before the speaking check (order swap only; callback behaviour unchanged, `test_nc199_on_recognizing.py` green).
+- Accessor helpers in the test file assert that `_parse_languages` and the `languages=` parameter exist, so RED failed on assertions, not `AttributeError`/`TypeError`.
+
+**Mutation probe.** Replacing the timestamp swap with a read that does not clear it turned 4 observability tests red (second commit, speaking discard, echo discard, empty commit); reverted.
+
+**Suites.** Full offline suite, dev venv (Python 3.14.7, SDK 1.51.2): 636 passed, 1 skipped (baseline before RED: 604 passed, 1 skipped).
+
+**AC-11, SDK floor.** Clean venv `/tmp/vr009-floor`, `pip install ".[dev]" "azure-cognitiveservices-speech==1.38.0"`. Surface probe output:
+
+```
+sdk 1.38.0
+AutoDetectSourceLanguageConfig True
+AutoDetectSourceLanguageResult <class 'azure.cognitiveservices.speech.AutoDetectSourceLanguageResult'>
+LanguageIdMode PropertyId.SpeechServiceConnection_LanguageIdMode
+SpeechConfig(endpoint) ok Continuous
+```
+
+`pytest tests/test_vr009_azure_stt_language_id.py tests/test_azure_stt.py` at 1.38.0: 43 passed. Because the unit tests patch the SDK constructors, the real `_build_recognizer()` was also run unpatched (no network until start) in both modes on 1.38.0 and 1.51.2: four `SpeechRecognizer` objects built. The floor stays `>=1.38.0`; `pyproject.toml` extra unchanged.
+
+**AC-08, live probe.** `scripts/probe_vr009_lid.py`, region `swedencentral` (CSAP `.env` key; owner approval R-4). Clips are Azure TTS output in `Raw8Khz8BitMonoMULaw`, fed at 20 ms per 160-byte frame plus 3 s of mu-law silence:
+- fi: `fi-FI-NooraNeural`, "Hei, haluaisin varata ajan lääkärille ensi viikolle." (33000 bytes, 4.12 s)
+- sv: `sv-SE-SofieNeural`, "Hej, jag skulle vilja boka en tid hos läkaren nästa vecka." (35100 bytes, 4.39 s)
+
+| SDK | Run | Committed line | Recognized text |
+|---|---|---|---|
+| 1.51.2 | LID fi | `lang=fi-FI commit_lag_ms=78 chars=52` | exact |
+| 1.51.2 | LID sv | `lang=sv-SE commit_lag_ms=82 chars=58` | exact |
+| 1.51.2 | single fi | `lang=fi-FI commit_lag_ms=531 chars=52` | exact |
+| 1.38.0 | LID fi | `lang=fi-FI commit_lag_ms=27 chars=52` | exact |
+| 1.38.0 | LID sv | `lang=sv-SE commit_lag_ms=70 chars=58` | exact |
+| 1.38.0 | single fi | `lang=fi-FI commit_lag_ms=468 chars=52` | exact |
+
+No `Canceled` error; the v2 endpoint accepted continuous LID in `swedencentral`; both languages identified. Python 3.14.7, voice_runtime at `06201d8`.
+
+**Reading the lag numbers.** Two samples per mode on clean synthetic speech. LID committed 27–82 ms after its last interim, single-locale 468–531 ms. `commit_lag_ms` measures last interim to commit only; it does not measure the higher initial latency Microsoft documents for LID (fact 7), nor end-of-speech to commit. Phone audio, short answers and real callers remain NC-566's field question.
+
+**AC-09, artifacts.** `python -m build`: `voice_runtime-0.2.0-py3-none-any.whl` and `voice_runtime-0.2.0.tar.gz`; `twine check`: both PASSED. Clean venv `/tmp/vr009-wheel` with the wheel `[azure]` plus `azure-cognitiveservices-speech==1.38.0`, run outside the repo (module loaded from `site-packages`):
+
+```
+unset:                 sdk 1.38.0 lid_languages () lang fi-FI
+fi-FI,sv-SE,en-GB:     sdk 1.38.0 lid_languages ('fi-FI', 'sv-SE', 'en-GB') lang fi-FI
+fi:                    ValueError: STT language 'fi' is not a full locale like 'fi-FI'
+```
+
+**AC-12.** README Azure STT section and environment table, `.env.example` commented example; `CHANGELOG.md` 0.2.0 entry (dated at release).
+
+**Deviations.** None from the frozen scope. The probe script is new in `scripts/` (D-6). No tag, TestPyPI or PyPI upload.
 
 ## Research and alternatives
 
