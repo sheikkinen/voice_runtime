@@ -1,42 +1,42 @@
 # Release Checklist — voice_runtime
 
-Bump → commit → tag → push tags → CI publishes to PyPI automatically.
+Releases happen only through GitHub Actions: version bump via PR → merge →
+push a `vX.Y.Z` tag → `publish.yml` publishes to PyPI. No manual `twine upload`.
 
-**CI gate:** `publish.yml` runs on `v*.*.*` tags. It validates that the tag version
-matches `pyproject.toml` before publishing. A mismatch fails the build.
+**CI gate:** `publish.yml` runs the test job (Python 3.11 + 3.12, extras
+`dev,elevenlabs,azure`) on every PR to `main` and on `v*.*.*` tags. On tags it
+also validates tag == `pyproject.toml` version, builds, publishes via the PyPI
+OIDC trusted publisher, and creates the GitHub Release.
 
 ---
 
 ## Steps
 
 ```bash
-# 1. Pull latest (avoid divergence)
-git pull
-
-# 2. Bump version in pyproject.toml
-# patch: X.Y.Z → X.Y.(Z+1)  minor: X.Y.Z → X.(Y+1).0  major: X.Y.Z → (X+1).0.0
+# 1. Release PR: bump version in pyproject.toml and date the CHANGELOG entry
+#    (main is PR-only — never push to main directly)
+git switch -c chore/release-0.1.1 origin/main
 sed -i '' 's/version = "0.1.0"/version = "0.1.1"/' pyproject.toml
-
-# 3. Stage and commit
-cat > /tmp/vr-release-msg.txt << 'EOF'
+cat > ./tmp/msg.txt << 'EOF'
 chore(release): bump version to 0.1.1
 
 - NC-283: Twilio WebSocket signature validation (X-Twilio-Signature)
-
-Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 EOF
-git add pyproject.toml
-git commit -F /tmp/vr-release-msg.txt
+git commit -aF ./tmp/msg.txt
+git push -u origin chore/release-0.1.1
+gh pr create --base main --fill
 
-# 4. Tag (must match version in pyproject.toml exactly)
-git tag v0.1.1
+# 2. After the PR is green and merged: tag the merge commit on main
+git fetch origin
+git tag v0.1.1 origin/main
+git push origin v0.1.1
 
-# 5. Push commit + tag (order matters — commit first, then tags)
-git push
-git push --tags
+# 3. Watch the publish run
+gh run watch "$(gh run list --workflow publish.yml --limit 1 --json databaseId -q '.[0].databaseId')"
 ```
 
-CI picks up the tag, runs tests on Python 3.11 + 3.12, builds, validates tag == pyproject.toml, then publishes to PyPI via OIDC trusted publisher.
+The version bump may also ride in the feature PR itself; the tag still goes on
+the merge commit on `main`.
 
 ---
 
@@ -78,7 +78,7 @@ See NC-315 for the incident record.
 
 ## Pre-release checks
 
-Before tagging, confirm locally:
+The PR run of `publish.yml` must be green. Before tagging, also confirm locally:
 
 ```bash
 # All tests pass
@@ -99,6 +99,7 @@ pip install build && python -m build --wheel --no-isolation
 |---------|-----|
 | CI: "Tag version != pyproject.toml version" | Ensure `sed` replaced the right string; check `git diff pyproject.toml` |
 | CI: tests fail on ubuntu (no `ffmpeg`) | CI installs ffmpeg via apt — check azure/elevenlabs optional dep imports |
+| Tag pushed on wrong commit | Delete the tag before the publish job runs (`git push origin :refs/tags/vX.Y.Z`); after publish, bump to next patch |
 | PyPI: "File already exists" | Version already published; cannot overwrite — bump to next patch |
 | Tag pushed but no CI | Tag must match `v*.*.*` glob exactly (e.g., `v0.1.1` not `0.1.1`) |
 
