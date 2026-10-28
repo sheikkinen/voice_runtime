@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 - Unreleased
+
+### Added
+
+- **VR-009**: `AzurePersistentStt(languages=...)` and the
+        `AZURE_STT_LANGUAGES` env variable enable Azure continuous language
+        identification over 2 to 10 full locales (distinct base languages).
+        One locale selects that locale; unset keeps `language_code`.
+        Invalid input raises `ValueError` (env: at import). Initial start and
+        reconnect build the same recognizer. Each forwarded transcript logs
+        `Azure STT committed lang=... commit_lag_ms=... chars=...` without
+        the text; `on_committed` is unchanged. Azure SDK floor stays 1.38.0.
+
 ## 0.1.15 - 2026-10-01
 
 ### Fixed
