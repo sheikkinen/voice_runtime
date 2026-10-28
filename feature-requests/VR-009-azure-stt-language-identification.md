@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature (opt-in provider configuration)
-**Status:** Enforced 2026-10-28 (RED `e800039`, GREEN `06201d8`); version 0.2.0 prepared, not tagged or published (owner decision, C-6). Judged: approved with revisions (round 2, 2026-10-28); R-1 to R-3 folded.
+**Status:** Enforced 2026-10-28 (RED `c3e6f9b`, GREEN `9d08fff`); version 0.2.0 prepared, not tagged or published (owner decision, C-6). Judged: approved with revisions (round 2, 2026-10-28); R-1 to R-3 folded.
 **Requested:** 2026-10-28
 **Effort:** 0.5 day (library only; CSAP wiring and field test are CSAP NC-566)
 **Target release:** the next **minor** release from the actual release baseline at enforcement (judgement R-2; `reference/release-checklist.md`: new features are MINOR). From today's 0.1.15 that is 0.2.0; CSAP NC-566 pins the number actually released.
@@ -113,7 +113,9 @@ SDK surface checked in the CSAP venv (`azure-cognitiveservices-speech` 1.51.0; v
 
 ## Implementation record (2026-10-28)
 
-**Commits.** RED `e800039` adds `tests/test_vr009_azure_stt_language_id.py` (32 tests): 31 failed on assertions against the old code (30 `AssertionError`, 1 `DID NOT RAISE`); the unset-env single-locale preservation test passed, as it should. GREEN `06201d8` changes only `voice_runtime/providers/azure_stt.py` (379 lines; `_parse_languages` radon C/12, gate is 21).
+**Commits.** RED `c3e6f9b` adds `tests/test_vr009_azure_stt_language_id.py` (32 tests): 31 failed on assertions against the old code (30 `AssertionError`, 1 `DID NOT RAISE`); the unset-env single-locale preservation test passed, as it should. GREEN `9d08fff` changes only `voice_runtime/providers/azure_stt.py` (379 lines; `_parse_languages` radon C/12, gate is 21).
+
+**Rebase.** The branch was rebased onto `733f4f5` (CI azure extra, PR #9) before review. Evidence below was recorded at the pre-rebase commits RED `e800039` and GREEN `06201d8`; `git patch-id --stable` is identical for `e800039`/`c3e6f9b` (`56fcdfe54a6f`) and `06201d8`/`9d08fff` (`ebec9ba02ec5`), and the rebase base adds only workflow and release-doc changes.
 
 **Decisions.**
 - `_build_recognizer()` creates the push stream, audio config, speech config and recognizer and connects the three callbacks; `start()` and `_reconnect()` both call it and then start continuous recognition. Single-locale construction is byte-for-byte today's.
@@ -123,7 +125,7 @@ SDK surface checked in the CSAP venv (`azure-cognitiveservices-speech` 1.51.0; v
 
 **Mutation probe.** Replacing the timestamp swap with a read that does not clear it turned 4 observability tests red (second commit, speaking discard, echo discard, empty commit); reverted.
 
-**Suites.** Full offline suite, dev venv (Python 3.14.7, SDK 1.51.2): 636 passed, 1 skipped (baseline before RED: 604 passed, 1 skipped). Clean Python 3.11 venv (`.[dev,azure,elevenlabs]`, the CI floor): 636 passed, 1 skipped. Python 3.12 is not installed locally; the tag-triggered `publish.yml` matrix covers it, and the repo has no PR-triggered CI.
+**Suites.** Full offline suite, dev venv (Python 3.14.7, SDK 1.51.2): 636 passed, 1 skipped (baseline before RED: 604 passed, 1 skipped). Clean Python 3.11 venv (`.[dev,azure,elevenlabs]`, the CI floor): 636 passed, 1 skipped. Python 3.12 is not installed locally. After PR #9 the `publish.yml` test job also runs on PRs with the azure extra: PR head `34098ba`, run `40683000301`, Python 3.11 and 3.12 each 636 passed, 1 skipped; package build passed.
 
 **AC-11, SDK floor.** Clean venv `/tmp/vr009-floor`, `pip install ".[dev]" "azure-cognitiveservices-speech==1.38.0"`. Surface probe output:
 
@@ -150,7 +152,7 @@ SpeechConfig(endpoint) ok Continuous
 | 1.38.0 | LID sv | `lang=sv-SE commit_lag_ms=70 chars=58` | exact |
 | 1.38.0 | single fi | `lang=fi-FI commit_lag_ms=468 chars=52` | exact |
 
-No `Canceled` error; the v2 endpoint accepted continuous LID in `swedencentral`; both languages identified. Python 3.14.7, voice_runtime at `06201d8`.
+No `Canceled` error; the v2 endpoint accepted continuous LID in `swedencentral`; both languages identified. Python 3.14.7, voice_runtime at `06201d8` (pre-rebase; same patch as `9d08fff`).
 
 **Reading the lag numbers.** Two samples per mode on clean synthetic speech. LID committed 27–82 ms after its last interim, single-locale 468–531 ms. `commit_lag_ms` measures last interim to commit only; it does not measure the higher initial latency Microsoft documents for LID (fact 7), nor end-of-speech to commit. Phone audio, short answers and real callers remain NC-566's field question.
 
