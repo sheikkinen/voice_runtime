@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 - 2026-11-03
+
+### Added
+
+- **VR-010**: `initiate_outbound_call(phone, *, region=...)` accepts the
+	VR-004 `TwilioRegion`. With a region, the call is created on that
+	region's API host with its API key pair and needs no ambient
+	`TWILIO_AUTH_TOKEN`; an invalid region raises before any request.
+	Omitting the argument keeps the ambient behaviour.
+
 ## 0.2.0 - 2026-10-28
 
 ### Added
