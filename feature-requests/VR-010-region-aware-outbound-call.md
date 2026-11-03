@@ -2,10 +2,10 @@
 
 **Priority:** HIGH
 **Type:** Feature (explicit provider contract, additive keyword argument)
-**Status:** Implemented locally, uncommitted (2026-11-03); **not judged**. The code came before this FR, which goes against the usual plan-judge-enforce order. The RED tests were witnessed failing before the change, see the [Implementation record](#implementation-record-2026-11-03). Next: judge, then commit RED and GREEN separately.
+**Status:** Implemented and committed (`f8529fd`, 2026-11-03); release 0.3.0 prepared on `chore/release-0.3.0`; **not judged**. The code came before this FR, which goes against the usual plan-judge-enforce order. The RED tests were witnessed failing before the change, see the [Implementation record](#implementation-record-2026-11-03). Next: judge, then commit RED and GREEN separately.
 **Requested:** 2026-11-03
 **Effort:** 0.25 day (library only)
-**Target release:** next **minor** release after 0.2.0 (a new public keyword argument is a feature; `reference/release-checklist.md`). Not bumped yet.
+**Target release:** next **minor** release after 0.2.0 (a new public keyword argument is a feature; `reference/release-checklist.md`). Bumped to **0.3.0** with CHANGELOG entry (AC-08 done).
 **First consumer:** outcaller (`sheikkinen/outcaller-yamlgraph`) `nodes/twilio_call.py::_place_outbound_call`, which builds an IE1 `TwilioRegion` from `TWILIO_IE1_OUTGOING_API_SID` / `_SECRET` and `TWILIO_ACCOUNT_SID`.
 **Prior art:** VR-004 (explicit-region hangup), VR-006 (explicit-region CDR read), VR-007 (media teardown REST hangup via `hangup_regions`); csap-black-box-tests VBOT-113 `_place_outbound_call`; [regional-twilio-migration.md](../docs/regional-twilio-migration.md).
 
@@ -75,7 +75,7 @@ Single-region by design. Unlike hangup, placing a call is not idempotent: trying
 - **RED:** 4 new tests in `tests/test_twilio_call.py::TestInitiateOutboundCallRegion` failed with `TypeError: initiate_outbound_call() got an unexpected keyword argument 'region'` (4 failed, 14 passed).
 - **GREEN:** `voice_runtime/transports/twilio_call.py::initiate_outbound_call` gained the keyword-only `region` argument as specified. Full suite: 640 passed, 1 skipped. `ruff format --check` is clean for both files. The remaining `ruff check` findings (S101, SIM117) are the existing style of the test file.
 - **Field evidence:** outcaller placed call `CA5efd11ed916efcb1b0b4e6813df80c32` through `initiate_outbound_call(phone, region=<IE1>)`. Twilio replied 201 on `api.dublin.ie1.twilio.com/.../Calls.json`. The call completed after 123 s with a full probe, extract and recap conversation.
-- **Deviation:** implemented before this FR was written and judged. Nothing is committed or pushed. CHANGELOG and version bump (AC-08) are pending.
+- **Deviation:** implemented before this FR was written and judged. Committed as a single commit `f8529fd` (RED and GREEN not split). CHANGELOG and version bump (AC-08) done for 0.3.0.
 
 ## Source references
 
