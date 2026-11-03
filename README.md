@@ -321,6 +321,49 @@ call_sid = initiate_outbound_call("+358401234567")
 xml = build_stream_twiml("wss://example.ngrok.io")
 ```
 
+## Transport: AudioHook (Genesys Audio Connector) — experimental (0.4.0, VR-011)
+
+> **Experimental, sandbox-only.** Use only against a Genesys sandbox org until
+> the VR-011 E-2 field evidence is recorded. RFC 9421 HTTP message signatures
+> are **not verified**: the API key is the only credential, and it works as a
+> plain bearer token.
+
+Registers a `/audiohook` endpoint on which Genesys Cloud is the WebSocket client.
+The upgrade itself is the call: there is no webhook or TwiML step.
+
+```python
+from voice_runtime.transports.audiohook_server import register_audiohook_websocket
+
+app = FastAPI()
+register_audiohook_websocket(
+    app,
+    session,
+    api_key=os.environ["AUDIOHOOK_API_KEY"],  # read by the consumer, not the library
+    organization_id="<genesys org uuid>",     # optional; checks header and open
+    mark_latency_s=0.2,                       # byte-clock mark delay
+)
+```
+
+- **Auth:** constant-time `X-API-KEY` comparison, plus the organization ID when
+  set. A failure gets a generic `disconnect` (`unauthorized`) after ≥0.5 s.
+  Signature headers are only logged as present or absent.
+- **Media:** accepts only the offered PCMU 8000 Hz `["external"]` entry and
+  echoes it in `opened`. Caller audio is re-chunked into 160-byte frames for
+  `put_inbound`. Bot audio is sent as 1600-byte (200 ms) packets, at most 5 per second.
+- **Marks are byte-clock emulated.** AudioHook has no wire mark. A mark resolves
+  `mark_latency_s` after the audio queued before it has been sent. This is
+  not a confirmation that the caller heard it. `playback_*` events are logged
+  as evidence only.
+- **Barge-in:** `request_clear_buffer` drops buffered audio, sends an
+  `event` with a `barge_in` entity and resolves pending marks.
+- **Ending:** `request_disconnect` sends `disconnect` (`completed`) with **empty
+  `outputVariables`**, then waits up to 10 s for Genesys `close`. A Genesys
+  `close` gets `closed`.
+- **Probe connections** (nil UUID `00000000-…` as `conversationId` or
+  `participant.id`) are answered but never bound to the session.
+- **Single call per session:** one `VoiceSession` serves one call at a time,
+  as with the Twilio transport.
+
 ## Providers
 
 ### ElevenLabs TTS
