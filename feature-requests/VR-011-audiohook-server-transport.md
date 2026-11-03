@@ -313,7 +313,7 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 | # | Condition | Status |
 |---|---|---|
 | C-1 | Fold R-1 to R-5 and the revised AC list before production edits | Done 2026-11-03 |
-| C-2 | RED commit (AC-01) precedes GREEN | Done: RED `a488354`, GREEN `119b692` |
+| C-2 | RED commit (AC-01) precedes GREEN | Done: RED `7bb9687`, GREEN `03aa406` |
 | C-3 | Operator approves sandbox-only, dedicated-key exposure before E-2 | Approved 2026-11-03 (see Field evidence) |
 | C-4 | No tag or publish until E-2 is recorded and passes | Open |
 | C-5 | No surface listed as not authorized; adjacent work needs its own judged FR | Standing |
@@ -326,16 +326,18 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 
 | Step | Commit | Content |
 |---|---|---|
-| RED | `a488354` | `tests/test_vr011_audiohook_server.py`: 35 witnesses, committed with `SKIP=pytest`. RED run: 1 failed (AC-01 `find_spec`), 34 skipped on the missing module. |
-| GREEN | `119b692` | `audiohook_server.py`, `_audiohook_writer.py`, `_stt_lifecycle.py`, the `twilio_ws.py` call site (+2 −18). |
-| Docs | `789130f` | README section, CHANGELOG 0.4.0, `pyproject.toml` 0.4.0, first version of this record. |
-| RED (E-1 #1) | `d3415a9` | `test_ac04_probe_through_real_fastapi_route`: real Starlette upgrade via `TestClient`. Failed with `WebSocketDisconnect` (HTTP 403). |
-| GREEN (E-1 #1) | `37d6203` | Import `WebSocket` at runtime so FastAPI can resolve the endpoint annotation. |
-| RED (E-1 #2) | `3a1a09a` | `test_ac04_probe_nil_uuid[nil-conversation, nil-participant]`: 2 failed, 36 passed. The harness `push_open` gained a `participant_id` argument (additive). |
-| GREEN (E-1 #2) | `16526ae` | `_is_probe`: nil-UUID `conversationId` or `participant.id`, or JSON `null`. |
+| RED | `7bb9687` | `tests/test_vr011_audiohook_server.py`: 35 witnesses, committed with `SKIP=pytest`. RED run: 1 failed (AC-01 `find_spec`), 34 skipped on the missing module. |
+| GREEN | `03aa406` | `audiohook_server.py`, `_audiohook_writer.py`, `_stt_lifecycle.py`, the `twilio_ws.py` call site (+2 −18). |
+| Docs | `84b7fe0` | README section, CHANGELOG 0.4.0, `pyproject.toml` 0.4.0, first version of this record. |
+| RED (E-1 #1) | `2ccc2d8` | `test_ac04_probe_through_real_fastapi_route`: real Starlette upgrade via `TestClient`. Failed with `WebSocketDisconnect` (HTTP 403). |
+| GREEN (E-1 #1) | `4c489d1` | Import `WebSocket` at runtime so FastAPI can resolve the endpoint annotation. |
+| RED (E-1 #2) | `5bc73d1` | `test_ac04_probe_nil_uuid[nil-conversation, nil-participant]`: 2 failed, 36 passed. The harness `push_open` gained a `participant_id` argument (additive). |
+| GREEN (E-1 #2) | `b861e1e` | `_is_probe`: nil-UUID `conversationId` or `participant.id`, or JSON `null`. |
 | Record | this commit | E-1 evidence and FR protocol-fact corrections. |
 
-The test file was unchanged between the first RED and GREEN (`git diff a488354 119b692 -- tests/` is empty). Later test changes are only the two E-1 witnesses and the additive `push_open` argument.
+The test file was unchanged between the first RED and GREEN (`git diff 7bb9687 03aa406 -- tests/` is empty). Later test changes are only the two E-1 witnesses and the additive `push_open` argument.
+
+Commit SHAs above are post-rebase. Pre-rebase SHAs, which appear in the RED/GREEN commit messages and in the judgement's "judged revision" field: `cb0d863`→`9b397e0`, `36d2af5`→`d3a5eec`, `a488354`→`7bb9687`, `119b692`→`03aa406`, `789130f`→`84b7fe0`, `d3415a9`→`2ccc2d8`, `37d6203`→`4c489d1`, `3a1a09a`→`5bc73d1`, `16526ae`→`b861e1e`.
 
 **Witness map** (all in `tests/test_vr011_audiohook_server.py`, module-level `pytestmark = req("VR-011")`)
 
@@ -364,8 +366,8 @@ The test file was unchanged between the first RED and GREEN (`git diff a488354 1
 
 **Commands and results** (Python 3.12, yamlgraph root venv)
 
-- Focused: `python -m pytest tests/test_vr011_audiohook_server.py -q --no-cov` → 35 passed at `119b692`; 38 passed at `16526ae`.
-- Full: `python -m pytest tests/ -q --no-cov` → 675 passed, 1 skipped at `119b692`; 678 passed, 1 skipped at `16526ae`. The 9 or 10 `RuntimeWarning: coroutine ... never awaited` warnings are attributed to older test modules (`test_nc170_*`, `test_nc260_*`, `test_session.py`, ...), and their count varies between identical runs. None comes from VR-011.
+- Focused: `python -m pytest tests/test_vr011_audiohook_server.py -q --no-cov` → 35 passed at `03aa406`; 38 passed at `b861e1e`.
+- Full: `python -m pytest tests/ -q --no-cov` → 675 passed, 1 skipped at `03aa406`; 678 passed, 1 skipped at `b861e1e`. The 9 or 10 `RuntimeWarning: coroutine ... never awaited` warnings are attributed to older test modules (`test_nc170_*`, `test_nc260_*`, `test_session.py`, ...), and their count varies between identical runs. None comes from VR-011.
 - `ruff check voice_runtime/` → all checks passed. `ruff format --check voice_runtime/transports/ tests/test_vr011_audiohook_server.py` → formatted.
 - `pre-commit run --files voice_runtime/transports/*.py tests/test_vr011_audiohook_server.py` → all hooks passed, including the file-size gate and radon (no new function is grade C or worse).
 - Artifact: `uvx --from build pyproject-build --wheel` → `voice_runtime-0.4.0-py3-none-any.whl`, 30 files. It contains `transports/audiohook_server.py`, `_audiohook_writer.py` and `_stt_lifecycle.py`. No `tests/`, `feature-requests/` or `.env*`. The `pyproject.toml` diff is the version line only, so no dependency is added.
@@ -373,7 +375,7 @@ The test file was unchanged between the first RED and GREEN (`git diff a488354 1
 **Deviations**
 
 1. **D-1 is split across two files.** The first draft of `audiohook_server.py` had 517 lines, which fails the 450-line pre-commit gate. `_Writer` and `_Mark` moved to the private `voice_runtime/transports/_audiohook_writer.py`, which receives the clock as injected `now`/`sleep` callables. `audiohook_server.py` passes late-bound lambdas over its module-level `_now`/`_sleep`, so the test seam is unchanged. It re-exports `PACKET_BYTES` and `PACKET_INTERVAL_S` via `__all__`. The public surface is still only `register_audiohook_websocket`. The reviewer should confirm that this private module stays within D-1.
-2. **Version 0.4.0, not 0.3.0.** The branch base is 0.2.0. The separately prepared, unmerged release branch `chore/release-0.3.0` claims 0.3.0, so this minor bump takes the next free minor version. The CHANGELOG entry is `0.4.0 - Unreleased`. Expect a merge conflict in `pyproject.toml` and `CHANGELOG.md` against the 0.3.0 release; resolve it by keeping both entries.
+2. **Version 0.4.0, not 0.3.0.** 0.3.0 (VR-010) was released from sheikkinen/voice_runtime#10 while this work was in progress. The branch was rebased onto `903823c` (2026-11-03). The only conflict was the docs commit's `pyproject.toml` (kept `0.4.0`) and `CHANGELOG.md` (kept both entries: `0.4.0 - Unreleased` above `0.3.0`). After the rebase: full suite 678 passed, 1 skipped.
 3. **Pre-commit is not installed as a git hook in this checkout.** The commits ran no hooks. The full hook set was run manually before each GREEN commit (all passed). The RED commits used `SKIP=pytest`, as planned, and no other hook was skipped by intent.
 4. **E-1 found two defects that the fake-socket harness could not see.** (a) Every real upgrade got HTTP 403, because `WebSocket` was imported only under `TYPE_CHECKING` and FastAPI could not inject it. The fake socket bypassed FastAPI injection by capturing the handler directly. (b) Genesys probes carry the nil UUID, not JSON `null`, so a probe was bound as a call. The FR's protocol facts, glossary and lifecycle text are corrected in place and marked "corrected by E-1". The intent (a probe never binds) is unchanged.
 5. **E-1 "audio both ways" needs a client patch.** The pinned reference client (`2871b01`, which is also upstream HEAD) treats every server binary message as fatal (`signalFatalError(415, 'Unexpected binary message')`). It predates the Audio Connector's bidirectional audio. E-1 was therefore run as three sub-runs (below). Whether E-1c's one-function local client patch satisfies the frozen E-1 wording was an owner decision. **Owner decision, 2026-11-03 (@sheikkinen): E-1c with the patched client is accepted as meeting E-1.** Bot-to-Genesys audio against real Genesys is still verified in E-2.
