@@ -240,24 +240,24 @@ Every new test carries `@pytest.mark.req("VR-011")` and lives in `tests/test_vr0
 
 Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgement's, adopted unchanged.
 
-- [ ] **AC-01:** A collection-safe, test-only RED commit precedes production code. With the module absent, one `importlib.util.find_spec` assertion fails and the dependent behavioural tests skip only on that missing-module condition. With the module present, failures are behavioural assertions, never import, fixture or setup errors. Every new test carries `@pytest.mark.req("VR-011")`.
-- [ ] **AC-02:** Registration rejects a non-string or empty `api_key` and a negative or non-finite `mark_latency_s` before the route is added. Secret values appear in no exception, `repr` or captured log.
-- [ ] **AC-03:** A wrong API key and header or `open` organization mismatches accept the upgrade, wait at least 500 ms, send exactly one generic `unauthorized` envelope through the single writer, flush it, and close. No session or STT state is touched.
-- [ ] **AC-04:** A probe `open` receives `opened` within 5 s with the offered PCMU media unchanged, then `closed` for the peer `close`. It never binds the session or creates STT.
-- [ ] **AC-05:** A call `open` receives `opened` as the first outbound frame and within 5 s. Only after it is flushed are identity, `stream_sid`, STT factory and tee, `on_stt_ready` and `stt.start` activated. Missing compatible media sends one `error` disconnect and never binds.
-- [ ] **AC-06:** Every outbound text frame on every tested path has `version "2"`, the header session id, contiguous writer-assigned `seq`, the current `clientseq` and `parameters`; none has `position`. `ping` and `update` receive `pong` and `updated` within one packet interval.
-- [ ] **AC-07:** A repeated or skipped Genesys `seq` emits one ERROR record, sends one `error` disconnect when possible, and tears down a bound session exactly once.
-- [ ] **AC-08:** Binary inputs of 1, 159, 160, 333 and 4,000 bytes are concatenated and emitted to `put_inbound` and `tap_caller` as identical consecutive 160-byte frames. The final incomplete remainder is explicitly discarded on teardown and never emitted as a short frame.
-- [ ] **AC-09:** With a fake clock, 80,000 bytes produce 50 unpadded 1,600-byte packets; 80,160 bytes produce 51 packets with exactly 1,440 trailing `0xFF` bytes. The production interval constant is `0.2`, and send timestamps are never closer than the configured interval.
-- [ ] **AC-10:** All text and binary sends, including the authentication, probe, unsupported-media, control, clear and ending paths, record one writer-task identity. Text queued during audio is flushed within one packet interval.
-- [ ] **AC-11:** Marks use the R-3 scheduled-byte snapshot. Two marks resolve in queue order. A no-audio mark resolves no earlier than `mark_latency_s` after writer consumption. Playback events resolve no marks.
-- [ ] **AC-12:** Each `playback_started` / `playback_completed` event produces one INFO record containing its position, the byte-clock seconds, the latest resolved mark and the elapsed time since that mark, without secret material.
-- [ ] **AC-13:** On clear, at most one already in-flight binary send precedes the single `barge_in` event. No later binary frame contains pre-clear buffered bytes. Marks pending when the clear is consumed resolve.
-- [ ] **AC-14:** Bot disconnect flushes `disconnect(completed, outputVariables={})`, waits at most the production 10-second constant for the peer `close`, flushes `closed` if received, and closes in both the response and timeout cases. Tests use a fake clock.
-- [ ] **AC-15:** Peer `close` flushes `closed` within 10 s. WebSocket disconnect, receive failure, send failure, sequence failure, and bot or caller endings stop STT once, cancel and await child tasks, and call `signal_disconnected()` exactly once, and only when the session was bound.
-- [ ] **AC-16:** The shared STT helper preserves the existing Twilio lifecycle and call order. Existing Twilio, VR-003 and VR-007 tests pass unmodified. Importing `audiohook_server` in a fresh interpreter does not import `twilio` or `voice_runtime.transports.twilio_ws`.
-- [ ] **AC-17:** `pytest tests/ -q --no-cov`, `ruff check voice_runtime/` and the wheel build pass. No runtime dependency is added. The minor version and CHANGELOG entry are present. The wheel excludes `tests/`, `feature-requests/` and `.env*`.
-- [ ] **AC-18:** README documents the registration call, byte-clock marks, empty output variables, single-call session scope, absent signature verification, and the experimental, sandbox-only status until E-2.
+- [x] **AC-01:** A collection-safe, test-only RED commit precedes production code. With the module absent, one `importlib.util.find_spec` assertion fails and the dependent behavioural tests skip only on that missing-module condition. With the module present, failures are behavioural assertions, never import, fixture or setup errors. Every new test carries `@pytest.mark.req("VR-011")`.
+- [x] **AC-02:** Registration rejects a non-string or empty `api_key` and a negative or non-finite `mark_latency_s` before the route is added. Secret values appear in no exception, `repr` or captured log.
+- [x] **AC-03:** A wrong API key and header or `open` organization mismatches accept the upgrade, wait at least 500 ms, send exactly one generic `unauthorized` envelope through the single writer, flush it, and close. No session or STT state is touched.
+- [x] **AC-04:** A probe `open` receives `opened` within 5 s with the offered PCMU media unchanged, then `closed` for the peer `close`. It never binds the session or creates STT.
+- [x] **AC-05:** A call `open` receives `opened` as the first outbound frame and within 5 s. Only after it is flushed are identity, `stream_sid`, STT factory and tee, `on_stt_ready` and `stt.start` activated. Missing compatible media sends one `error` disconnect and never binds.
+- [x] **AC-06:** Every outbound text frame on every tested path has `version "2"`, the header session id, contiguous writer-assigned `seq`, the current `clientseq` and `parameters`; none has `position`. `ping` and `update` receive `pong` and `updated` within one packet interval.
+- [x] **AC-07:** A repeated or skipped Genesys `seq` emits one ERROR record, sends one `error` disconnect when possible, and tears down a bound session exactly once.
+- [x] **AC-08:** Binary inputs of 1, 159, 160, 333 and 4,000 bytes are concatenated and emitted to `put_inbound` and `tap_caller` as identical consecutive 160-byte frames. The final incomplete remainder is explicitly discarded on teardown and never emitted as a short frame.
+- [x] **AC-09:** With a fake clock, 80,000 bytes produce 50 unpadded 1,600-byte packets; 80,160 bytes produce 51 packets with exactly 1,440 trailing `0xFF` bytes. The production interval constant is `0.2`, and send timestamps are never closer than the configured interval.
+- [x] **AC-10:** All text and binary sends, including the authentication, probe, unsupported-media, control, clear and ending paths, record one writer-task identity. Text queued during audio is flushed within one packet interval.
+- [x] **AC-11:** Marks use the R-3 scheduled-byte snapshot. Two marks resolve in queue order. A no-audio mark resolves no earlier than `mark_latency_s` after writer consumption. Playback events resolve no marks.
+- [x] **AC-12:** Each `playback_started` / `playback_completed` event produces one INFO record containing its position, the byte-clock seconds, the latest resolved mark and the elapsed time since that mark, without secret material.
+- [x] **AC-13:** On clear, at most one already in-flight binary send precedes the single `barge_in` event. No later binary frame contains pre-clear buffered bytes. Marks pending when the clear is consumed resolve.
+- [x] **AC-14:** Bot disconnect flushes `disconnect(completed, outputVariables={})`, waits at most the production 10-second constant for the peer `close`, flushes `closed` if received, and closes in both the response and timeout cases. Tests use a fake clock.
+- [x] **AC-15:** Peer `close` flushes `closed` within 10 s. WebSocket disconnect, receive failure, send failure, sequence failure, and bot or caller endings stop STT once, cancel and await child tasks, and call `signal_disconnected()` exactly once, and only when the session was bound.
+- [x] **AC-16:** The shared STT helper preserves the existing Twilio lifecycle and call order. Existing Twilio, VR-003 and VR-007 tests pass unmodified. Importing `audiohook_server` in a fresh interpreter does not import `twilio` or `voice_runtime.transports.twilio_ws`.
+- [x] **AC-17:** `pytest tests/ -q --no-cov`, `ruff check voice_runtime/` and the wheel build pass. No runtime dependency is added. The minor version and CHANGELOG entry are present. The wheel excludes `tests/`, `feature-requests/` and `.env*`.
+- [x] **AC-18:** README documents the registration call, byte-clock marks, empty output variables, single-call session scope, absent signature verification, and the experimental, sandbox-only status until E-2.
 - [ ] **AC-19:** E-1 is recorded before merge. E-2 and the explicit sandbox-risk decision are recorded before any release tag or upload containing this feature.
 - [ ] **AC-20:** The FR records the RED and GREEN commits, an AC-to-test witness map, focused and full-suite commands and results, artifact inspection, field evidence, and every deviation.
 
@@ -313,14 +313,68 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 | # | Condition | Status |
 |---|---|---|
 | C-1 | Fold R-1 to R-5 and the revised AC list before production edits | Done 2026-11-03 |
-| C-2 | RED commit (AC-01) precedes GREEN | Open |
+| C-2 | RED commit (AC-01) precedes GREEN | Done: RED `a488354`, GREEN `119b692` |
 | C-3 | Operator approves sandbox-only, dedicated-key exposure before E-2 | Approved 2026-11-03 (see Field evidence) |
 | C-4 | No tag or publish until E-2 is recorded and passes | Open |
 | C-5 | No surface listed as not authorized; adjacent work needs its own judged FR | Standing |
 
 ## Implementation record
 
-_Empty until enforcement._
+**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server` (local; not pushed). E-1 pending (pre-merge). E-2 not started (pre-release, C-4).
+
+**Commits**
+
+| Step | Commit | Content |
+|---|---|---|
+| RED | `a488354` | `tests/test_vr011_audiohook_server.py`: 35 witnesses, committed with `SKIP=pytest`. RED run: 1 failed (AC-01 `find_spec`), 34 skipped on the missing module. |
+| GREEN | `119b692` | `audiohook_server.py`, `_audiohook_writer.py`, `_stt_lifecycle.py`, the `twilio_ws.py` call site (+2 −18). |
+| Docs | this commit | README section, CHANGELOG 0.4.0, `pyproject.toml` 0.4.0, this record. |
+
+The test file is unchanged between RED and GREEN (`git diff a488354 HEAD -- tests/` is empty).
+
+**Witness map** (all in `tests/test_vr011_audiohook_server.py`, module-level `pytestmark = req("VR-011")`)
+
+| AC | Tests |
+|---|---|
+| AC-01 | `test_ac01_audiohook_server_module_exists` and the RED run above |
+| AC-02 | `test_ac02_registration_validation[*]`, `test_ac02_secrets_absent_from_logs` |
+| AC-03 | `test_ac03_unauthorized[*]` |
+| AC-04 | `test_ac04_probe` |
+| AC-05 | `test_ac05_call_open_binds_after_opened`, `test_ac05_secondary_factory_tee`, `test_ac05_unsupported_media` |
+| AC-06 | `test_ac06_envelope_and_sequencing` |
+| AC-07 | `test_ac07_sequence_fault[*]` |
+| AC-08 | `test_ac08_inbound_rechunking` |
+| AC-09 | `test_ac09_outbound_pacing[*]` |
+| AC-10 | `test_ac10_single_writer_all_paths` |
+| AC-11 | `test_ac11_byte_clock_marks`, `test_ac11_mark_without_audio` |
+| AC-12 | `test_ac12_playback_evidence_logs_and_resolves_nothing` |
+| AC-13 | `test_ac13_barge_in` |
+| AC-14 | `test_ac14_bot_disconnect_with_close`, `test_ac14_bot_disconnect_timeout` |
+| AC-15 | `test_ac15_peer_close`, `test_ac15_websocket_disconnect`, `test_ac15_receive_failure`, `test_ac15_send_failure`, `test_ac15_no_child_tasks_survive` |
+| AC-16 | `test_ac16_import_does_not_load_twilio`, plus the unmodified Twilio, VR-003 and VR-007 suites in the full run |
+| AC-17 | Full suite, ruff, wheel build and inspection below |
+| AC-18 | README "Transport: AudioHook (Genesys Audio Connector) — experimental" |
+| AC-19 | E-1 / E-2 below |
+| AC-20 | This record |
+
+**Commands and results** (Python 3.12, yamlgraph root venv)
+
+- Focused: `python -m pytest tests/test_vr011_audiohook_server.py -q --no-cov` → 35 passed.
+- Full: `python -m pytest tests/ -q --no-cov` → 675 passed, 1 skipped. The 9 or 10 `RuntimeWarning: coroutine ... never awaited` warnings are attributed to older test modules (`test_nc170_*`, `test_nc260_*`, `test_session.py`, ...), and their count varies between identical runs. None comes from VR-011.
+- `ruff check voice_runtime/` → all checks passed. `ruff format --check voice_runtime/transports/ tests/test_vr011_audiohook_server.py` → formatted.
+- `pre-commit run --files voice_runtime/transports/*.py tests/test_vr011_audiohook_server.py` → all hooks passed, including the file-size gate and radon (no new function is grade C or worse).
+- Artifact: `uvx --from build pyproject-build --wheel` → `voice_runtime-0.4.0-py3-none-any.whl`, 30 files. It contains `transports/audiohook_server.py`, `_audiohook_writer.py` and `_stt_lifecycle.py`. No `tests/`, `feature-requests/` or `.env*`. The `pyproject.toml` diff is the version line only, so no dependency is added.
+
+**Deviations**
+
+1. **D-1 is split across two files.** The first draft of `audiohook_server.py` had 517 lines, which fails the 450-line pre-commit gate. `_Writer` and `_Mark` moved to the private `voice_runtime/transports/_audiohook_writer.py`, which receives the clock as injected `now`/`sleep` callables. `audiohook_server.py` passes late-bound lambdas over its module-level `_now`/`_sleep`, so the test seam is unchanged. It re-exports `PACKET_BYTES` and `PACKET_INTERVAL_S` via `__all__`. The public surface is still only `register_audiohook_websocket`. The reviewer should confirm that this private module stays within D-1.
+2. **Version 0.4.0, not 0.3.0.** The branch base is 0.2.0. The separately prepared, unmerged release branch `chore/release-0.3.0` claims 0.3.0, so this minor bump takes the next free minor version. The CHANGELOG entry is `0.4.0 - Unreleased`. Expect a merge conflict in `pyproject.toml` and `CHANGELOG.md` against the 0.3.0 release; resolve it by keeping both entries.
+3. **Pre-commit is not installed as a git hook in this checkout.** The commits ran no hooks. The full hook set was run manually (result above). The RED commit used `SKIP=pytest`, as planned, and no other hook was skipped by intent.
+
+**Field evidence**
+
+- E-1: pending.
+- E-2: not started. C-4 blocks any tag or upload containing this transport.
 
 ## Source references
 

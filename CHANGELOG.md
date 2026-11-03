@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 - Unreleased
+
+### Added
+
+- **VR-011 (experimental, sandbox-only)**: `register_audiohook_websocket(app,
+        session, api_key=..., organization_id=None, path="/audiohook",
+        mark_latency_s=0.2)` adds an AudioHook v2 server transport for the
+        Genesys Cloud Audio Connector. It uses constant-time API-key and
+        optional organization checks; RFC 9421 signatures are not verified.
+        It accepts only PCMU 8 kHz external-channel media, answers probe
+        connections without binding, paces bot audio as 1600-byte packets
+        from a single writer task, and emulates marks from a byte clock.
+        Barge-in sends a `barge_in` event. Bot hangup sends
+        `disconnect(completed)` with empty `outputVariables`. Not for
+        production until the VR-011 E-2 field evidence is recorded.
+
+### Changed
+
+- **VR-011**: the Twilio transport's STT start moved into the private
+        `transports/_stt_lifecycle.py` helper that both transports share.
+        Twilio behaviour is unchanged.
+
 ## 0.3.0 - 2026-11-03
 
 ### Added
