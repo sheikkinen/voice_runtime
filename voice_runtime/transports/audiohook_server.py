@@ -21,7 +21,8 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from fastapi import WebSocketDisconnect
+# Runtime import: FastAPI resolves the endpoint's ``WebSocket`` annotation.
+from fastapi import WebSocket, WebSocketDisconnect
 
 from voice_runtime.session import FRAME_BYTES
 from voice_runtime.transports._audiohook_writer import (
@@ -33,7 +34,7 @@ from voice_runtime.transports._audiohook_writer import (
 from voice_runtime.transports._stt_lifecycle import start_session_stt
 
 if TYPE_CHECKING:
-    from fastapi import FastAPI, WebSocket
+    from fastapi import FastAPI
 
     from voice_runtime.session import VoiceSession
 
