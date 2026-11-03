@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature (new transport; Twilio transports unchanged)
-**Status:** Approved with revisions (round 1). R-1 to R-5 are folded in (C-1). Amendment A-1 (D-1 file surface, E-1 wording) awaits re-judgement (round 2); merge waits for it.
+**Status:** Merged (sheikkinen/voice_runtime#11, `72c4556`). Approved with revisions (round 1); R-1 to R-5 folded in (C-1). Amendment A-1 (D-1 file surface, E-1 wording) approved by the owner through a manual process (see [Owner approval of A-1](#owner-approval-of-a-1-2026-11-03)). Release waits for E-2 (C-4).
 **Requested:** 2026-11-03
 **Effort:** 1.5–2 days (library and fake-socket tests). The field spike is extra and depends on getting access to a Genesys org.
 **Target release:** the next minor release after 0.3.0. A new public function counts as a feature (`reference/release-checklist.md`).
@@ -337,9 +337,13 @@ The review graph returned **Not approved** on PR head `ef1f17c`. It raised two b
 
    The evidence below already meets the reworded gate: E-1a passes and E-1c passes. The owner's earlier acceptance (deviation 5) is superseded by this amendment, so it no longer stands as a reviewer-unratified decision.
 
+### Owner approval of A-1 (2026-11-03)
+
+The owner (@sheikkinen) approved A-1 through a manual process: the round-2 judgement and the second review were both auto-approved by the owner, and neither the judge graph nor the review graph was re-run. PR #11 was merged at head `67736b3` as merge commit `72c4556` (CI: test 3.11, test 3.12 and build passed). The only graph-produced verdicts on record are round 1: the judgement (APPROVED WITH REVISIONS) and the review on `ef1f17c` (Not approved, on authority only). C-4 is unaffected: no tag or upload of 0.4.0 until E-2 passes.
+
 ## Implementation record
 
-**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server`, pushed, PR sheikkinen/voice_runtime#11. Review round 1 (head `ef1f17c`): Not approved, on authority only; answered by Amendment A-1, which awaits re-judgement. E-1 run 2026-11-03: it found two defects, both fixed test-first. E-1 accepted by the owner, including the patched-client sub-run E-1c (see Field evidence). E-2 not started (pre-release, C-4).
+**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server`, pushed, PR sheikkinen/voice_runtime#11. Review round 1 (head `ef1f17c`): Not approved, on authority only; answered by Amendment A-1, which the owner approved manually. Merged as `72c4556`. E-1 run 2026-11-03: it found two defects, both fixed test-first. E-1 accepted by the owner, including the patched-client sub-run E-1c (see Field evidence). E-2 not started (pre-release, C-4).
 
 **Commits**
 
