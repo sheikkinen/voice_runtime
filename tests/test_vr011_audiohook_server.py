@@ -410,6 +410,55 @@ async def test_ac04_probe(monkeypatch):
     assert rig.disconnects == []
 
 
+@needs_module
+def test_ac04_probe_through_real_fastapi_route():
+    """E-1 finding: the fake socket bypasses FastAPI's endpoint injection.
+
+    Drive the registered route through a real Starlette upgrade so an
+    unresolvable ``websocket`` annotation (403 before the handler) fails here.
+    """
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from voice_runtime.session import VoiceSession
+    from voice_runtime.transports.audiohook_server import (
+        register_audiohook_websocket,
+    )
+
+    app = FastAPI()
+    session = VoiceSession()
+    register_audiohook_websocket(app, session, api_key=API_KEY, organization_id=ORG_ID)
+    open_msg = {
+        "version": "2",
+        "id": SESSION_ID,
+        "type": "open",
+        "seq": 1,
+        "serverseq": 0,
+        "position": "PT0S",
+        "parameters": {
+            "organizationId": ORG_ID,
+            "conversationId": None,
+            "participant": None,
+            "media": [PCMU],
+            "language": "en-US",
+        },
+    }
+    close_msg = {**open_msg, "type": "close", "seq": 2, "parameters": {}}
+    with (
+        TestClient(app) as client,
+        client.websocket_connect("/audiohook", headers=headers()) as ws,
+    ):
+        ws.send_text(json.dumps(open_msg))
+        opened = json.loads(ws.receive_text())
+        ws.send_text(json.dumps(close_msg))
+        closed = json.loads(ws.receive_text())
+    assert opened["type"] == "opened"
+    assert opened["parameters"]["media"] == [PCMU]
+    assert closed["type"] == "closed"
+    assert [opened["seq"], closed["seq"]] == [1, 2]
+    assert session.stream_sid is None
+
+
 # ---------------------------------------------------------------- AC-05
 
 
