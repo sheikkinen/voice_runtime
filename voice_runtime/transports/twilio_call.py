@@ -84,17 +84,23 @@ def build_route_stream_xml(stream_url: str, route_token: str) -> str:
 </Response>""".strip()
 
 
-def initiate_outbound_call(phone: str) -> str:
+def initiate_outbound_call(phone: str, *, region: TwilioRegion | None = None) -> str:
     """Initiate an outbound Twilio call with Media Streams.
 
     Args:
         phone: Phone number to call (E.164 format).
+        region: Explicit routing and identity (e.g. an IE1 API key pair).
+            When given, the call is placed through that region and
+            TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN are not read. Without it,
+            the ambient Account Auth Token is used.
 
     Returns:
         call_sid from Twilio.
 
     Raises:
-        RuntimeError: If VOICE_STREAM_URL or Twilio credentials are missing.
+        RuntimeError: If VOICE_STREAM_URL, TWILIO_PHONE_NUMBER or, without
+            a region, the Twilio credentials are missing.
+        ValueError: If region is not a valid TwilioRegion.
     """
     account_sid, auth_token, phone_number, stream_url = _get_twilio_env()
 
@@ -102,15 +108,21 @@ def initiate_outbound_call(phone: str) -> str:
         raise RuntimeError(
             "Set VOICE_STREAM_URL to a public WebSocket URL (use ngrok for local dev)"
         )
-    if not account_sid or not auth_token:
-        raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
+    if region is None:
+        if not account_sid or not auth_token:
+            raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN required")
+    else:
+        region = TwilioRegion.model_validate(region)
     if not phone_number:
         raise RuntimeError("TWILIO_PHONE_NUMBER required")
 
     twiml = build_stream_twiml(stream_url)
     logger.info("Initiating outbound call to %s", phone)
 
-    client = build_twilio_client(account_sid, auth_token)
+    if region is None:
+        client = build_twilio_client(account_sid, auth_token)
+    else:
+        client = build_explicit_twilio_client(region)
     call = client.calls.create(
         to=phone,
         from_=phone_number,

@@ -158,6 +158,91 @@ class TestInitiateOutboundCall:
         mock_client.calls.create.assert_called_once()
 
 
+_REGION_ENV = {
+    "TWILIO_ACCOUNT_SID": "",
+    "TWILIO_AUTH_TOKEN": "",
+    "TWILIO_PHONE_NUMBER": "+15551234567",
+    "VOICE_STREAM_URL": "https://example.ngrok.io",
+}
+
+
+def _ie1_region():
+    from voice_runtime.transports.twilio_call import TwilioRegion
+
+    return TwilioRegion(
+        api_host="api.dublin.ie1.twilio.com",
+        account_sid="AC1",
+        auth=("SK1", "secret"),
+    )
+
+
+class TestInitiateOutboundCallRegion:
+    """An explicit region places the call with its own identity, no Auth Token."""
+
+    def test_region_uses_explicit_client_without_auth_token(self):
+        from voice_runtime.transports.twilio_call import initiate_outbound_call
+
+        mock_client = MagicMock()
+        mock_client.calls.create.return_value = MagicMock(sid="CA9")
+        region = _ie1_region()
+
+        with (
+            patch.dict("os.environ", _REGION_ENV, clear=False),
+            patch(
+                "voice_runtime.transports.twilio_call.build_explicit_twilio_client",
+                return_value=mock_client,
+            ) as build_explicit,
+            patch(
+                "voice_runtime.transports.twilio_call.build_twilio_client"
+            ) as build_ambient,
+        ):
+            sid = initiate_outbound_call("+358401234567", region=region)
+
+        assert sid == "CA9"
+        build_explicit.assert_called_once_with(region)
+        build_ambient.assert_not_called()
+        _, kwargs = mock_client.calls.create.call_args
+        assert kwargs["to"] == "+358401234567"
+        assert kwargs["from_"] == "+15551234567"
+        assert 'url="wss://example.ngrok.io/voice"' in kwargs["twiml"]
+
+    def test_region_still_requires_stream_url(self):
+        from voice_runtime.transports.twilio_call import initiate_outbound_call
+
+        env = {**_REGION_ENV, "VOICE_STREAM_URL": ""}
+        with (
+            patch.dict("os.environ", env, clear=False),
+            pytest.raises(RuntimeError, match="VOICE_STREAM_URL"),
+        ):
+            initiate_outbound_call("+358401234567", region=_ie1_region())
+
+    def test_region_still_requires_phone_number(self):
+        from voice_runtime.transports.twilio_call import initiate_outbound_call
+
+        env = {**_REGION_ENV, "TWILIO_PHONE_NUMBER": ""}
+        with (
+            patch.dict("os.environ", env, clear=False),
+            pytest.raises(RuntimeError, match="TWILIO_PHONE_NUMBER"),
+        ):
+            initiate_outbound_call("+358401234567", region=_ie1_region())
+
+    def test_region_is_revalidated(self):
+        from voice_runtime.transports.twilio_call import initiate_outbound_call
+
+        with (
+            patch.dict("os.environ", _REGION_ENV, clear=False),
+            pytest.raises(ValueError, match="Invalid Twilio API host"),
+        ):
+            initiate_outbound_call(
+                "+358401234567",
+                region={
+                    "api_host": "evil.example.com",
+                    "account_sid": "AC1",
+                    "auth": ("a", "b"),
+                },
+            )
+
+
 class TestHangupCall:
     """ninchat_voice NC-362: supervisor-side reap teardown rides this seam."""
 
@@ -184,7 +269,11 @@ class TestHangupCall:
         from voice_runtime.transports.twilio_call import hangup_call
 
         with (
-            patch.dict("os.environ", {"TWILIO_ACCOUNT_SID": "", "TWILIO_AUTH_TOKEN": ""}, clear=False),
+            patch.dict(
+                "os.environ",
+                {"TWILIO_ACCOUNT_SID": "", "TWILIO_AUTH_TOKEN": ""},
+                clear=False,
+            ),
             pytest.raises(RuntimeError, match="TWILIO_ACCOUNT_SID"),
         ):
             hangup_call("CA-x")
