@@ -129,13 +129,25 @@ class FakeAudiohookSocket:
         }
         self.incoming.put_nowait({"type": "websocket.receive", "text": json.dumps(msg)})
 
-    def push_open(self, *, conversation_id=CONVERSATION_ID, media=None, org=ORG_ID):
+    def push_open(
+        self,
+        *,
+        conversation_id=CONVERSATION_ID,
+        media=None,
+        org=ORG_ID,
+        participant_id="p1",
+    ):
         self.push(
             "open",
             {
                 "organizationId": org,
                 "conversationId": conversation_id,
-                "participant": {"id": "p1", "ani": ANI, "aniName": "", "dnis": "+3589"},
+                "participant": {
+                    "id": participant_id,
+                    "ani": ANI,
+                    "aniName": "",
+                    "dnis": "+3589",
+                },
                 "media": media if media is not None else [STEREO, PCMU],
                 "language": "fi-FI",
                 "inputVariables": {},
@@ -405,6 +417,39 @@ async def test_ac04_probe(monkeypatch):
     assert await until(rig.task.done)
     assert rig.ws.text_types() == ["opened", "closed"]
     assert rig.session.stream_sid is None
+    assert not rig.session._ws_connected.is_set()
+    assert rig.factory_calls == []
+    assert rig.disconnects == []
+
+
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
+
+
+@needs_module
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "open_kwargs",
+    [
+        {"conversation_id": NIL_UUID},
+        {"participant_id": NIL_UUID},
+    ],
+    ids=["nil-conversation", "nil-participant"],
+)
+async def test_ac04_probe_nil_uuid(monkeypatch, open_kwargs):
+    """E-1 finding: Genesys probes carry the nil UUID, not JSON null.
+
+    The reference client sends ``conversationId`` and ``participant.id`` as
+    ``00000000-0000-0000-0000-000000000000``; its servers treat either as a
+    probe (``isNullUuid``).
+    """
+    rig = await start_rig(monkeypatch)
+    rig.ws.push_open(media=[PCMU], **open_kwargs)
+    assert await until(lambda: "opened" in rig.ws.text_types())
+    rig.ws.push("close", {"reason": "end"})
+    assert await until(rig.task.done)
+    assert rig.ws.text_types() == ["opened", "closed"]
+    assert rig.session.stream_sid is None
+    assert rig.session.call_sid is None
     assert not rig.session._ws_connected.is_set()
     assert rig.factory_calls == []
     assert rig.disconnects == []
