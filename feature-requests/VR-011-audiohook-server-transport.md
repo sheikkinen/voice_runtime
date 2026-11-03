@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature (new transport; Twilio transports unchanged)
-**Status:** Approved with revisions. R-1 to R-5 are folded in (C-1); implementation is authorized within the frozen scope D-1 to D-6.
+**Status:** Approved with revisions (round 1). R-1 to R-5 are folded in (C-1). Amendment A-1 (D-1 file surface, E-1 wording) awaits re-judgement (round 2); merge waits for it.
 **Requested:** 2026-11-03
 **Effort:** 1.5–2 days (library and fake-socket tests). The field spike is extra and depends on getting access to a Genesys org.
 **Target release:** the next minor release after 0.3.0. A new public function counts as a feature (`reference/release-checklist.md`).
@@ -259,11 +259,14 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 - [x] **AC-17:** `pytest tests/ -q --no-cov`, `ruff check voice_runtime/` and the wheel build pass. No runtime dependency is added. The minor version and CHANGELOG entry are present. The wheel excludes `tests/`, `feature-requests/` and `.env*`.
 - [x] **AC-18:** README documents the registration call, byte-clock marks, empty output variables, single-call session scope, absent signature verification, and the experimental, sandbox-only status until E-2.
 - [ ] **AC-19:** E-1 is recorded before merge. E-2 and the explicit sandbox-risk decision are recorded before any release tag or upload containing this feature.
-- [ ] **AC-20:** The FR records the RED and GREEN commits, an AC-to-test witness map, focused and full-suite commands and results, artifact inspection, field evidence, and every deviation.
+- [x] **AC-20:** The FR records the RED and GREEN commits, an AC-to-test witness map, focused and full-suite commands and results, artifact inspection, field evidence, and every deviation.
 
 **Field evidence (judgement R-5).** Fake-socket tests authorize implementation, not publication as a proven Genesys transport.
 
-- **E-1, pre-merge gate:** the pinned purecloudlabs reference **client** (Node CLI, streaming a WAV) completes a session against a temporary FastAPI app that registers this transport: open, `opened`, audio both ways, close, `closed`, contiguous sequence numbers, and no protocol `error`. It does not depend on the separately scoped outcaller wiring.
+- **E-1, pre-merge gate (amended by A-1):** the pinned purecloudlabs reference **client** (Node CLI, streaming a WAV) runs against a temporary FastAPI app that registers this transport. It does not depend on the separately scoped outcaller wiring.
+  - **Unmodified client:** probe, call, and wrong-key sessions complete: open, `opened`, caller audio in, close, `closed`, contiguous sequence numbers, no protocol `error`.
+  - **Server-to-client audio:** the pinned client rejects every server binary frame (`415`), because it predates bidirectional Audio Connector audio. This direction is therefore witnessed with a client whose `onBinaryMessage` alone is patched to accept the frames. The patch is recorded verbatim in the evidence. That run must show paced 1,600-byte packets, a byte-clock mark resolving, and `disconnect`→`close`→`closed` with no protocol `error`.
+  - Real Genesys acceptance of server audio remains E-2.
 - **E-2, pre-release gate:** a Genesys sandbox Architect flow with Audio Connector reaches the transport over ngrok on port 443. The record includes the conversation id, transcript excerpts, the number of `playback_*` pairs per bot turn with their timing against the byte clock, any 429/409/413 errors, behaviour after `barge_in`, and whether audio sent just before `disconnect` was heard. No release tag or upload containing this transport happens before E-2 passes (C-4).
 
 **Operator decision (C-3), 2026-11-03.** The owner (@sheikkinen) approved exposing a sandbox endpoint protected only by the API-key and organization checks for the E-2 spike, knowing that RFC 9421 signature verification and replay protection are absent. Bounds:
@@ -303,7 +306,7 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 
 | Deliverable | Surface |
 |---|---|
-| D-1 | `voice_runtime/transports/audiohook_server.py` with the registered `/audiohook` transport |
+| D-1 | `voice_runtime/transports/audiohook_server.py` with the registered `/audiohook` transport, plus the private `voice_runtime/transports/_audiohook_writer.py` (single writer, pacing, byte-clock marks, barge-in; amended by A-1) |
 | D-2 | One private STT-start helper under `voice_runtime/transports/` and the minimal `twilio_ws.py` call-site replacement |
 | D-3 | `tests/test_vr011_audiohook_server.py` |
 | D-4 | `README.md` AudioHook registration and experimental-limit documentation |
@@ -318,9 +321,25 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 | C-4 | No tag or publish until E-2 is recorded and passes | Open |
 | C-5 | No surface listed as not authorized; adjacent work needs its own judged FR | Standing |
 
+### Amendment A-1 (2026-11-03, after review of sheikkinen/voice_runtime#11)
+
+The review graph returned **Not approved** on PR head `ef1f17c`. It raised two blocking findings, both about authority; the code and checks passed. This amendment asks the judge (round 2) to decide both. Nothing else in scope changes.
+
+1. **D-1 file surface.** D-1 named one file. The implementation needs two: the single-file draft had 517 lines and fails the 450-line pre-commit gate. `_Writer` and `_Mark` therefore live in the private `_audiohook_writer.py` (214 lines). It is not exported, and the public surface is still only `register_audiohook_websocket`. The alternatives are worse:
+   - keeping one file means waiving the size gate;
+   - other splits move protocol parsing out of D-1 and fragment the transport more.
+
+   D-1 now lists both files (table above). This does not add a new capability.
+2. **E-1 wording.** The round-1 gate asked for "audio both ways" with the pinned client. That client cannot receive server audio at all (`signalFatalError(415, 'Unexpected binary message')` in `onBinaryMessage`, pinned commit and upstream HEAD), so the gate could not be met by any server. E-1 is reworded (Field evidence above):
+   - unmodified-client sessions cover the protocol and the inbound direction;
+   - a client with only `onBinaryMessage` patched covers the outbound direction;
+   - real Genesys stays the E-2 pre-release gate.
+
+   The evidence below already meets the reworded gate: E-1a passes and E-1c passes. The owner's earlier acceptance (deviation 5) is superseded by this amendment, so it no longer stands as a reviewer-unratified decision.
+
 ## Implementation record
 
-**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server` (local; not pushed). E-1 run 2026-11-03: it found two defects, both fixed test-first. E-1 accepted by the owner, including the patched-client sub-run E-1c (see Field evidence). E-2 not started (pre-release, C-4).
+**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server`, pushed, PR sheikkinen/voice_runtime#11. Review round 1 (head `ef1f17c`): Not approved, on authority only; answered by Amendment A-1, which awaits re-judgement. E-1 run 2026-11-03: it found two defects, both fixed test-first. E-1 accepted by the owner, including the patched-client sub-run E-1c (see Field evidence). E-2 not started (pre-release, C-4).
 
 **Commits**
 
@@ -374,11 +393,11 @@ Commit SHAs above are post-rebase. Pre-rebase SHAs, which appear in the RED/GREE
 
 **Deviations**
 
-1. **D-1 is split across two files.** The first draft of `audiohook_server.py` had 517 lines, which fails the 450-line pre-commit gate. `_Writer` and `_Mark` moved to the private `voice_runtime/transports/_audiohook_writer.py`, which receives the clock as injected `now`/`sleep` callables. `audiohook_server.py` passes late-bound lambdas over its module-level `_now`/`_sleep`, so the test seam is unchanged. It re-exports `PACKET_BYTES` and `PACKET_INTERVAL_S` via `__all__`. The public surface is still only `register_audiohook_websocket`. The reviewer should confirm that this private module stays within D-1.
+1. **D-1 is split across two files.** The first draft of `audiohook_server.py` had 517 lines, which fails the 450-line pre-commit gate. `_Writer` and `_Mark` moved to the private `voice_runtime/transports/_audiohook_writer.py`, which receives the clock as injected `now`/`sleep` callables. `audiohook_server.py` passes late-bound lambdas over its module-level `_now`/`_sleep`, so the test seam is unchanged. It re-exports `PACKET_BYTES` and `PACKET_INTERVAL_S` via `__all__`. The public surface is still only `register_audiohook_websocket`. Resolved by Amendment A-1 (D-1 now lists this module).
 2. **Version 0.4.0, not 0.3.0.** 0.3.0 (VR-010) was released from sheikkinen/voice_runtime#10 while this work was in progress. The branch was rebased onto `903823c` (2026-11-03). The only conflict was the docs commit's `pyproject.toml` (kept `0.4.0`) and `CHANGELOG.md` (kept both entries: `0.4.0 - Unreleased` above `0.3.0`). After the rebase: full suite 678 passed, 1 skipped.
 3. **Pre-commit is not installed as a git hook in this checkout.** The commits ran no hooks. The full hook set was run manually before each GREEN commit (all passed). The RED commits used `SKIP=pytest`, as planned, and no other hook was skipped by intent.
 4. **E-1 found two defects that the fake-socket harness could not see.** (a) Every real upgrade got HTTP 403, because `WebSocket` was imported only under `TYPE_CHECKING` and FastAPI could not inject it. The fake socket bypassed FastAPI injection by capturing the handler directly. (b) Genesys probes carry the nil UUID, not JSON `null`, so a probe was bound as a call. The FR's protocol facts, glossary and lifecycle text are corrected in place and marked "corrected by E-1". The intent (a probe never binds) is unchanged.
-5. **E-1 "audio both ways" needs a client patch.** The pinned reference client (`2871b01`, which is also upstream HEAD) treats every server binary message as fatal (`signalFatalError(415, 'Unexpected binary message')`). It predates the Audio Connector's bidirectional audio. E-1 was therefore run as three sub-runs (below). Whether E-1c's one-function local client patch satisfies the frozen E-1 wording was an owner decision. **Owner decision, 2026-11-03 (@sheikkinen): E-1c with the patched client is accepted as meeting E-1.** Bot-to-Genesys audio against real Genesys is still verified in E-2.
+5. **E-1 "audio both ways" needs a client patch.** The pinned reference client (`2871b01`, which is also upstream HEAD) treats every server binary message as fatal (`signalFatalError(415, 'Unexpected binary message')`). It predates the Audio Connector's bidirectional audio. E-1 was therefore run as three sub-runs (below). Whether E-1c's one-function local client patch satisfies the frozen E-1 wording was an owner decision. **Owner decision, 2026-11-03 (@sheikkinen): E-1c with the patched client is accepted as meeting E-1.** Bot-to-Genesys audio against real Genesys is still verified in E-2. Superseded by Amendment A-1, which rewords the E-1 gate itself.
 
 **Field evidence**
 
