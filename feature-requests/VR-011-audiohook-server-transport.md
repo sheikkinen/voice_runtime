@@ -2,14 +2,14 @@
 
 **Priority:** MEDIUM
 **Type:** Feature (new transport; Twilio transports unchanged)
-**Status:** Draft — awaiting judgement
+**Status:** Approved with revisions. R-1 to R-5 are folded in (C-1); implementation is authorized within the frozen scope D-1 to D-6.
 **Requested:** 2026-11-03
 **Effort:** 1.5–2 days (library and fake-socket tests). The field spike is extra and depends on getting access to a Genesys org.
 **Target release:** the next minor release after 0.3.0. A new public function counts as a feature (`reference/release-checklist.md`).
 **First consumer:** outcaller's inbound app (`server_incaller.py`). It gains one registration line and a start script without the Twilio webhook. That is a separate change and does not gate this FR. Later consumers, CSAP (`WS /genesys` on the supervisor) and csap-black-box-tests, get their own FRs.
 **Prior art:** `register_voice_websocket` (`voice_runtime/transports/twilio_ws.py:78`, the shape to mirror); NC-154 (transport intent: `request_disconnect`, `request_clear_buffer`); NC-236 (unique mark names); NC-260 (disconnect signalling); VR-004 (secrets kept out of `repr` and logs, and no reading of consumer environment variables); VR-007 (FR format); VR-008 (draft AudioHook **client**, unjudged, on branch `docs/vr-008-audiohook-fr`).
 **Research:** [Dispositioned alternatives](#research-and-prior-art). The protocol facts it relies on are restated in [Protocol facts](#protocol-facts-this-fr-relies-on), with sources pinned to commits.
-**Judgement:** _pending — the YAMLGraph judge adapter only; never this session_
+**Judgement:** [APPROVED WITH REVISIONS](VR-011-audiohook-server-transport.judgement.md), round 1, 2026-11-03. Conditions C-1 to C-5; the C-3 operator decision is recorded under [Field evidence](#acceptance-criteria).
 
 ## Glossary
 
@@ -133,16 +133,18 @@ def register_audiohook_websocket(
 - Accept the upgrade, as F-2 describes.
 - Compare `X-API-KEY` with `api_key` in constant time (`hmac.compare_digest`).
 - When `organization_id` is given, `Audiohook-Organization-Id` must equal it, and so must `open.organizationId`.
-- **Failure path.** Wait until at least 500 ms have passed since accept, then send `disconnect{reason:"unauthorized"}`. Its `info` is generic and never says which check failed. Then close the socket. The session is not touched: no `signal_ws_connected`, no `call_sid`, no STT.
+- **Failure path.** Wait until at least 500 ms have passed since accept, then queue `disconnect{reason:"unauthorized"}` on the single writer and await its flush. It uses the header session id and the last Genesys `seq` received, if any, as `clientseq`. Its `info` is generic and never says which check failed. Then close the socket. The session is never bound: no `signal_ws_connected`, no `call_sid`, no STT, no `signal_disconnected`.
 - `Signature` / `Signature-Input` are **not verified** in this FR. They are logged as present or absent, never by value. The PoC integration is configured without a client secret if Genesys allows it (open question Q-6). Verification belongs to the shared-module FR.
 
-**Session lifecycle.**
-- **Probe.** On `open` with a null `conversationId`: send `opened` with the chosen media, then answer the later `close` with `closed`. Never touch the session.
+**Session lifecycle (judgement R-1, R-2).**
+- **Writer first.** The writer task is created immediately after `accept`, before any protocol frame is sent (see Single writer).
+- **Bound.** A session becomes *bound* only after the API-key, header and `open` organization checks pass, compatible media is selected, and `opened` has been flushed. Before that point (authentication failure, probe, unsupported media) the handler never mutates `call_sid`, `caller_number`, `stream_sid`, STT or disconnected state.
+- **Probe.** On `open` with a null `conversationId`: queue `opened` with the chosen media and await its flush, then answer the later `close` with `closed`. Never bind the session or create STT.
 - **Call.** On `open` with a `conversationId`:
-  1. Choose the offered PCMU 8000 `external` entry unchanged and send `opened` before any other work. If none is offered, send `disconnect{reason:"error"}` and close.
-  2. Set `session.call_sid = conversationId` and `session.caller_number = participant.ani`.
-  3. Call `session.signal_ws_connected(<Audiohook session id>)`. The session id doubles as `stream_sid`, which `request_clear_buffer` needs.
-  4. Start the writer task and the STT lifecycle exactly as `twilio_ws` does today: factory, optional tee, `on_stt_ready`, then `stt.start(session.inbound)`. That block (`twilio_ws.py`, the code after `event == "start"`) moves into one private helper in `voice_runtime/transports/` that both transports call. It is moved, not changed: existing Twilio tests pass unmodified.
+  1. Choose the offered PCMU 8000 `external` entry unchanged. If none is offered, send `disconnect{reason:"error"}` through the writer, flush it and close without binding.
+  2. Queue `opened` as the first outbound frame and await its flush.
+  3. Bind: set `session.call_sid = conversationId` and `session.caller_number = participant.ani`, then call `session.signal_ws_connected(<Audiohook session id>)`. The session id doubles as `stream_sid`, which `request_clear_buffer` needs.
+  4. Start the STT lifecycle exactly as `twilio_ws` does today: factory, optional tee, `on_stt_ready`, then `stt.start(session.inbound)`. That block (`twilio_ws.py`, the code after `event == "start"`) moves into one private helper in `voice_runtime/transports/` that both transports call. It is moved, not changed: existing Twilio tests pass unmodified.
 - **Inbound sequence check.** Each Genesys `seq` must be the previous one plus 1. Any other value: log at ERROR, send `disconnect{reason:"error"}`, and end the session (F-4).
 - **Control messages.**
   - `ping` → `pong`; `update` → `updated`.
@@ -153,21 +155,22 @@ def register_audiohook_websocket(
   - An unknown `type` → log at WARNING and ignore.
 
 **Inbound audio.**
-- Binary frames are re-chunked into exact `FRAME_BYTES` (160-byte) frames, keeping the remainder for the next frame.
+- Binary frames are re-chunked into exact `FRAME_BYTES` (160-byte) frames, keeping the remainder for the next frame. An incomplete remainder left at teardown is discarded, never emitted as a short frame.
 - Each full frame goes to `session.put_inbound` and `session.tap_caller`. Consumers keep seeing Twilio-sized frames (F-7).
 
 **Single writer and pacing (F-4, F-8).**
-- One writer task owns every `send_text` / `send_bytes` on the socket.
+- One writer task, created immediately after `accept`, owns every `send_text` / `send_bytes` on the socket: `opened`, authentication and media-selection `disconnect`, `pong`, `updated`, `closed`, `event`, normal `disconnect`, and binary audio. No other code path writes to the socket.
 - Text messages are written in the order they are queued, with `seq` assigned at write time and `clientseq` set to the last Genesys `seq` seen.
+- Terminal frames (`opened`, every `disconnect`, `closed`) carry a completion acknowledgement; the handler awaits it before binding, closing or tearing down.
 - **Outbound audio:**
   - Drain `session.outbound` into a pacer buffer and send it as **1600-byte** binary messages, at most one per 200 ms on the loop clock.
   - A trailing partial packet is padded with `0xFF` to 1600 bytes when the queue has been empty for one packet interval, or when a mark is waiting on it.
   - Text messages never wait behind audio for more than one packet interval.
 
-**Marks: byte-clock emulation, option A.**
-- When the writer takes a mark from `session.get_pending_mark()`, it first moves everything currently in `session.outbound` into the pacer buffer.
-- The mark's target is the total outbound byte count at that moment, including padding.
-- The mark resolves (`session.signal_mark_received(name)`) once the byte clock has reached the target **and** `mark_latency_s` has elapsed since the packet containing the target was sent.
+**Marks: byte-clock emulation, option A (judgement R-3).**
+- When the writer consumes a mark from `session.get_pending_mark()`, it first drains the audio currently in `session.outbound` into the pacer buffer, then snapshots the scheduled-byte target: the total outbound byte count at that moment, including padding. Audio arriving after the snapshot belongs after the mark.
+- If the target exceeds the sent byte clock, the mark resolves (`session.signal_mark_received(name)`) once the packet containing the target has been sent **and** `mark_latency_s` has elapsed since that send.
+- If the target equals the sent byte clock (including a mark with no preceding audio), the latency anchor is the loop time at which the writer consumed the mark.
 - Marks resolve in the order they were queued.
 - **Evidence for the spike.** Every `playback_started` / `playback_completed` is logged at INFO with:
   - its `position`;
@@ -177,18 +180,21 @@ def register_audiohook_websocket(
 
   These events never resolve a mark in this FR. Options B and C (playback events as barrier or confirmation) wait for that evidence.
 
-**Barge-in (`request_clear_buffer`, NC-154).**
-- Drop the pacer buffer and everything in `session.outbound`.
-- Send `event{entities:[{type:"barge_in",data:{}}]}`.
-- Resolve every pending mark at once. This mirrors Twilio, which echoes pending marks after `clear`.
+**Barge-in (`request_clear_buffer`, NC-154; judgement R-3).** When the writer consumes a clear request, in this order:
+1. Discard the pacer buffer and drain the then-queued `session.outbound` bytes.
+2. Snapshot every name present in `_pending_marks`.
+3. Send one `event{entities:[{type:"barge_in",data:{}}]}`.
+4. Resolve the snapshot. This mirrors Twilio, which echoes pending marks after `clear`.
+
+Audio already handed to the socket cannot be retracted. The measurable boundary: after the `barge_in` event, no binary frame contains bytes buffered before the clear was consumed, and at most one already in-flight binary send precedes the event.
 
 **Ending.**
 - **Bot ends.** On `session.request_disconnect()` (`_disconnect_requested`):
-  - send `disconnect{reason:"completed", outputVariables:{}}`;
-  - wait up to 10 s for Genesys's `close`, answer `closed`, then close the socket;
+  - send `disconnect{reason:"completed", outputVariables:{}}` and await its flush;
+  - wait up to 10 s (a module constant) for Genesys's `close`; if it arrives, flush `closed`, then close the socket;
   - if no `close` arrives, close the socket after the wait.
-- **Caller ends.** On Genesys `close`: answer `closed{}` immediately, then `session.signal_disconnected()`.
-- **Every exit path** calls `session.signal_disconnected()` (NC-260 Gap B semantics), stops STT and cancels the writer — the same teardown order as `twilio_ws`. This includes `WebSocketDisconnect`, a send failure, a sequence error and an authentication failure after a session was bound.
+- **Caller ends.** On Genesys `close`: flush `closed{}` before closing the socket.
+- **Teardown (judgement R-2).** After binding, one handler-level `finally` owns teardown. It calls `session.signal_disconnected()` exactly once (NC-260 Gap B semantics), stops STT once, then cancels and awaits the writer and other child tasks. Required terminal frames are flushed before cancellation; when a send has already failed, impossible flushes are skipped but the bound-session teardown still runs. This covers `WebSocketDisconnect`, receive and send failures, a sequence error, and bot or caller endings. An unbound handler (authentication failure, probe, unsupported media) never calls `signal_disconnected()`.
 
 **Import path.** Consumers import `voice_runtime.transports.audiohook_server.register_audiohook_websocket`, the same way they import `twilio_ws` today. `voice_runtime/transports/__init__.py` stays empty.
 
@@ -199,12 +205,12 @@ None. The transport uses FastAPI/Starlette's `WebSocket` (`receive()` gives text
 ### 3. Documentation
 
 - README: a short "AudioHook (Genesys Audio Connector)" section with the registration call.
-- The section states the PoC limits:
-  - no signature verification;
+- The section labels the transport **experimental, sandbox-only** until E-2 passes (judgement R-5), and states the PoC limits:
+  - no signature verification (RFC 9421 absent);
   - byte-clock marks;
   - empty `outputVariables`;
   - one call per `VoiceSession`, as on Twilio.
-- CHANGELOG entry for VR-011.
+- CHANGELOG entry for VR-011, with the same experimental, sandbox-only label.
 
 ### Not changed
 
@@ -232,67 +238,40 @@ None. The transport uses FastAPI/Starlette's `WebSocket` (`receive()` gives text
 
 Every new test carries `@pytest.mark.req("VR-011")` and lives in `tests/test_vr011_audiohook_server.py`. It drives the captured route handler with a fake socket that scripts Genesys messages and records every send with a loop-clock timestamp. The pacing interval is the module constant, so no test sleeps in real time for more than about 1 s.
 
-- [ ] **AC-01:** A test-only behavioural RED commit adds the test file. Its failures are assertions or a missing attribute on `voice_runtime.transports.audiohook_server`, not collection or fixture errors.
-- [ ] **AC-02:** Registration validation.
-  - An empty `api_key` or a negative `mark_latency_s` raises `ValueError` before a route is added.
-  - The key value is absent from the exception text and from all log records captured during the whole test file.
-- [ ] **AC-03:** Authentication failure.
-  - Applies to a wrong `X-API-KEY` and to an `organization_id` mismatch, in the header and in `open`.
-  - The handler sends exactly one text message, `disconnect` with `reason "unauthorized"` and generic `info`, no earlier than 500 ms after accept, then closes.
-  - The session's `call_sid`, `stream_sid` and STT stay untouched.
-- [ ] **AC-04:** Probe.
-  - On `open` with null `conversationId`, the handler answers `opened` (`seq 1`, `clientseq 1`, the offered PCMU media unchanged, `parameters` present) and later answers `close` with `closed`.
-  - `signal_ws_connected` is never called and no STT factory is invoked.
-- [ ] **AC-05:** Call open.
-  - On `open` with a `conversationId`, `opened` is the first message sent, before the STT factory is invoked.
-  - `session.call_sid == conversationId`, `session.caller_number == participant.ani`, `session.stream_sid ==` the AudioHook session id.
-  - The STT lifecycle runs: factory, optional tee and `on_stt_ready`.
-  - An `open` offering no PCMU 8000 entry gets `disconnect{reason:"error"}`.
-- [ ] **AC-06:** Envelope and sequencing.
-  - Across a scripted session (`open`, `ping`, `update`, audio, `close`), every text message we send has `version "2"` and `id` = the session id.
-  - `seq` is 1, 2, 3… with no gap or duplicate.
-  - `clientseq` equals the last Genesys `seq` received.
-  - `parameters` is always present, and `position` is never present.
-  - `ping` gets `pong` and `update` gets `updated`.
-- [ ] **AC-07:** Inbound sequence gap. A Genesys `seq` that skips or repeats causes one ERROR log, a `disconnect{reason:"error"}` and `signal_disconnected()`.
-- [ ] **AC-08:** Inbound audio.
-  - Binary frames of 1, 159, 160, 333 and 4000 bytes reach `session.inbound` as consecutive 160-byte frames with the same byte content, carrying the remainder across frames.
-  - `tap_caller` sees the same bytes.
-- [ ] **AC-09:** Outbound pacing.
-  - For 10 s of queued TTS audio in 160-byte chunks, every binary message is exactly 1600 bytes, including a final packet padded with `0xFF`.
-  - No two binary messages are less than one packet interval apart, so there are never more than 5 per second at the production interval.
-  - The concatenated payload equals the input followed only by `0xFF` padding.
-- [ ] **AC-10:** Single writer. With audio streaming and a `ping` arriving mid-stream, all sends happen from one task (asserted via the fake socket's recorded task identity), and `pong` is sent within one packet interval.
-- [ ] **AC-11:** Byte-clock marks.
-  - `send_mark_and_wait` called from a worker thread after N bytes of audio returns only after the packet containing byte N has been sent **and** `mark_latency_s` has elapsed. Never earlier.
-  - Two marks resolve in queue order.
-  - A mark queued with no audio before it resolves after `mark_latency_s`.
-- [ ] **AC-12:** Playback evidence. `playback_started` / `playback_completed` produce one INFO record each, containing the event `position` and the byte-clock seconds. They resolve no mark.
-- [ ] **AC-13:** Barge-in. `request_clear_buffer()` during playback:
-  - sends no further audio from before the clear;
-  - sends exactly one `event` whose single entity is `barge_in`;
-  - resolves every pending mark.
-- [ ] **AC-14:** Bot ends. `request_disconnect()`:
-  - sends `disconnect{reason:"completed", outputVariables:{}}`;
-  - answers Genesys's following `close` with `closed`, then closes the socket;
-  - without a `close`, closes the socket after the wait. The wait is a module constant, set to 10 s in production and patched in the test.
-- [ ] **AC-15:** Caller ends. Genesys `close{reason:"end"}` gets `closed` and `signal_disconnected()`. `WebSocketDisconnect` and a send failure each call `signal_disconnected()` exactly once. Teardown stops STT and cancels the writer in every case.
-- [ ] **AC-16:** Twilio unchanged.
-  - The existing `tests/test_twilio_ws.py`, VR-003 and VR-007 tests pass without modification after the STT helper extraction.
-  - Importing `voice_runtime.transports.audiohook_server` in a fresh interpreter does not put `twilio` or `voice_runtime.transports.twilio_ws` in `sys.modules`. The shared STT helper therefore lives outside `twilio_ws.py`.
-- [ ] **AC-17:** Release hygiene.
-  - The full offline suite passes, and `ruff check voice_runtime/` is clean.
-  - No new runtime dependency.
-  - The version is bumped minor and CHANGELOG records VR-011.
-  - The README section states the PoC limits.
-  - The wheel builds and contains no `feature-requests/`, `tests/` or `.env*`.
-  - No upload or tag is part of this criterion (`reference/release-checklist.md`).
-- [ ] **AC-18:** The FR records RED/GREEN commits, the witness map from AC to test, suite results and any deviation.
+Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgement's, adopted unchanged.
 
-**Field evidence (recorded in this FR once; does not gate the release, per the unit-test boundary):**
+- [ ] **AC-01:** A collection-safe, test-only RED commit precedes production code. With the module absent, one `importlib.util.find_spec` assertion fails and the dependent behavioural tests skip only on that missing-module condition. With the module present, failures are behavioural assertions, never import, fixture or setup errors. Every new test carries `@pytest.mark.req("VR-011")`.
+- [ ] **AC-02:** Registration rejects a non-string or empty `api_key` and a negative or non-finite `mark_latency_s` before the route is added. Secret values appear in no exception, `repr` or captured log.
+- [ ] **AC-03:** A wrong API key and header or `open` organization mismatches accept the upgrade, wait at least 500 ms, send exactly one generic `unauthorized` envelope through the single writer, flush it, and close. No session or STT state is touched.
+- [ ] **AC-04:** A probe `open` receives `opened` within 5 s with the offered PCMU media unchanged, then `closed` for the peer `close`. It never binds the session or creates STT.
+- [ ] **AC-05:** A call `open` receives `opened` as the first outbound frame and within 5 s. Only after it is flushed are identity, `stream_sid`, STT factory and tee, `on_stt_ready` and `stt.start` activated. Missing compatible media sends one `error` disconnect and never binds.
+- [ ] **AC-06:** Every outbound text frame on every tested path has `version "2"`, the header session id, contiguous writer-assigned `seq`, the current `clientseq` and `parameters`; none has `position`. `ping` and `update` receive `pong` and `updated` within one packet interval.
+- [ ] **AC-07:** A repeated or skipped Genesys `seq` emits one ERROR record, sends one `error` disconnect when possible, and tears down a bound session exactly once.
+- [ ] **AC-08:** Binary inputs of 1, 159, 160, 333 and 4,000 bytes are concatenated and emitted to `put_inbound` and `tap_caller` as identical consecutive 160-byte frames. The final incomplete remainder is explicitly discarded on teardown and never emitted as a short frame.
+- [ ] **AC-09:** With a fake clock, 80,000 bytes produce 50 unpadded 1,600-byte packets; 80,160 bytes produce 51 packets with exactly 1,440 trailing `0xFF` bytes. The production interval constant is `0.2`, and send timestamps are never closer than the configured interval.
+- [ ] **AC-10:** All text and binary sends, including the authentication, probe, unsupported-media, control, clear and ending paths, record one writer-task identity. Text queued during audio is flushed within one packet interval.
+- [ ] **AC-11:** Marks use the R-3 scheduled-byte snapshot. Two marks resolve in queue order. A no-audio mark resolves no earlier than `mark_latency_s` after writer consumption. Playback events resolve no marks.
+- [ ] **AC-12:** Each `playback_started` / `playback_completed` event produces one INFO record containing its position, the byte-clock seconds, the latest resolved mark and the elapsed time since that mark, without secret material.
+- [ ] **AC-13:** On clear, at most one already in-flight binary send precedes the single `barge_in` event. No later binary frame contains pre-clear buffered bytes. Marks pending when the clear is consumed resolve.
+- [ ] **AC-14:** Bot disconnect flushes `disconnect(completed, outputVariables={})`, waits at most the production 10-second constant for the peer `close`, flushes `closed` if received, and closes in both the response and timeout cases. Tests use a fake clock.
+- [ ] **AC-15:** Peer `close` flushes `closed` within 10 s. WebSocket disconnect, receive failure, send failure, sequence failure, and bot or caller endings stop STT once, cancel and await child tasks, and call `signal_disconnected()` exactly once, and only when the session was bound.
+- [ ] **AC-16:** The shared STT helper preserves the existing Twilio lifecycle and call order. Existing Twilio, VR-003 and VR-007 tests pass unmodified. Importing `audiohook_server` in a fresh interpreter does not import `twilio` or `voice_runtime.transports.twilio_ws`.
+- [ ] **AC-17:** `pytest tests/ -q --no-cov`, `ruff check voice_runtime/` and the wheel build pass. No runtime dependency is added. The minor version and CHANGELOG entry are present. The wheel excludes `tests/`, `feature-requests/` and `.env*`.
+- [ ] **AC-18:** README documents the registration call, byte-clock marks, empty output variables, single-call session scope, absent signature verification, and the experimental, sandbox-only status until E-2.
+- [ ] **AC-19:** E-1 is recorded before merge. E-2 and the explicit sandbox-risk decision are recorded before any release tag or upload containing this feature.
+- [ ] **AC-20:** The FR records the RED and GREEN commits, an AC-to-test witness map, focused and full-suite commands and results, artifact inspection, field evidence, and every deviation.
 
-- **E-1:** The purecloudlabs reference **client** (Node CLI, streaming a WAV) completes a session against outcaller hosting this transport: open, `opened`, audio both ways, close, `closed`. No `error` message is received.
-- **E-2:** A Genesys sandbox Architect flow with Audio Connector reaches outcaller over ngrok on port 443. The record includes the conversation id, transcript excerpts, the number of `playback_*` pairs per bot turn with their timing against the byte clock, any 429/409/413 errors, behaviour after `barge_in`, and whether audio sent just before `disconnect` was heard.
+**Field evidence (judgement R-5).** Fake-socket tests authorize implementation, not publication as a proven Genesys transport.
+
+- **E-1, pre-merge gate:** the pinned purecloudlabs reference **client** (Node CLI, streaming a WAV) completes a session against a temporary FastAPI app that registers this transport: open, `opened`, audio both ways, close, `closed`, contiguous sequence numbers, and no protocol `error`. It does not depend on the separately scoped outcaller wiring.
+- **E-2, pre-release gate:** a Genesys sandbox Architect flow with Audio Connector reaches the transport over ngrok on port 443. The record includes the conversation id, transcript excerpts, the number of `playback_*` pairs per bot turn with their timing against the byte clock, any 429/409/413 errors, behaviour after `barge_in`, and whether audio sent just before `disconnect` was heard. No release tag or upload containing this transport happens before E-2 passes (C-4).
+
+**Operator decision (C-3), 2026-11-03.** The owner (@sheikkinen) approved exposing a sandbox endpoint protected only by the API-key and organization checks for the E-2 spike, knowing that RFC 9421 signature verification and replay protection are absent. Bounds:
+
+1. Traffic comes from a Genesys sandbox org only. Production deployment is not authorized by this FR.
+2. A dedicated non-production API key is used, held only in local `.env`, and rotated or revoked after the spike.
+3. Only test calls; no real caller or patient data.
+4. The endpoint (ngrok tunnel) is reachable only while the spike runs.
 
 ## Open questions (answered by the spike, not by this FR)
 
@@ -318,6 +297,26 @@ Every new test carries `@pytest.mark.req("VR-011")` and lives in `tests/test_vr0
 - Mark options B and C.
 - Concurrent calls on one `VoiceSession`, as on Twilio.
 - CSAP, csap-black-box-tests and outcaller code.
+- CI, hook and doctrine changes; a release tag or upload before C-4 is met.
+
+## Frozen scope and conditions (judgement)
+
+| Deliverable | Surface |
+|---|---|
+| D-1 | `voice_runtime/transports/audiohook_server.py` with the registered `/audiohook` transport |
+| D-2 | One private STT-start helper under `voice_runtime/transports/` and the minimal `twilio_ws.py` call-site replacement |
+| D-3 | `tests/test_vr011_audiohook_server.py` |
+| D-4 | `README.md` AudioHook registration and experimental-limit documentation |
+| D-5 | `pyproject.toml` minor version bump and `CHANGELOG.md` entry |
+| D-6 | This FR's implementation record: witness map, commands, results, deviations, E-1 and later E-2 evidence |
+
+| # | Condition | Status |
+|---|---|---|
+| C-1 | Fold R-1 to R-5 and the revised AC list before production edits | Done 2026-11-03 |
+| C-2 | RED commit (AC-01) precedes GREEN | Open |
+| C-3 | Operator approves sandbox-only, dedicated-key exposure before E-2 | Approved 2026-11-03 (see Field evidence) |
+| C-4 | No tag or publish until E-2 is recorded and passes | Open |
+| C-5 | No surface listed as not authorized; adjacent work needs its own judged FR | Standing |
 
 ## Implementation record
 
