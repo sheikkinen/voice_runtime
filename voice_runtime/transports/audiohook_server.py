@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 AUTH_FAILURE_DELAY_S = 0.5
 CLOSE_WAIT_S = 10.0
 _UNAUTHORIZED_INFO = "unauthorized"
+NIL_UUID = "00000000-0000-0000-0000-000000000000"
 
 
 def _now() -> float:
@@ -79,6 +80,12 @@ def _select_media(offered: Any) -> dict | None:
         ):
             return media
     return None
+
+
+def _is_probe(conversation_id: Any, participant: Any) -> bool:
+    """Genesys probes use the nil UUID for conversation or participant id."""
+    participant_id = participant.get("id") if isinstance(participant, dict) else None
+    return conversation_id in (None, NIL_UUID) or participant_id == NIL_UUID
 
 
 async def _cancel(task: asyncio.Task | None) -> None:
@@ -233,11 +240,11 @@ class _Connection:
             return True
         self._opened = True
         conversation_id = params.get("conversationId")
-        if conversation_id is None:
+        participant = params.get("participant")
+        if _is_probe(conversation_id, participant):
             logger.info("AudioHook probe session %s opened", self._session_id)
             return False
         session = self._session
-        participant = params.get("participant")
         session.call_sid = conversation_id
         session.caller_number = (
             participant.get("ani") if isinstance(participant, dict) else None
