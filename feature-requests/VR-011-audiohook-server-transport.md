@@ -320,7 +320,7 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 
 ## Implementation record
 
-**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server` (local; not pushed). E-1 run 2026-11-03: it found two defects, both fixed test-first. One E-1 sub-gate needs an owner decision (see Field evidence). E-2 not started (pre-release, C-4).
+**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server` (local; not pushed). E-1 run 2026-11-03: it found two defects, both fixed test-first. E-1 accepted by the owner, including the patched-client sub-run E-1c (see Field evidence). E-2 not started (pre-release, C-4).
 
 **Commits**
 
@@ -376,7 +376,7 @@ The test file was unchanged between the first RED and GREEN (`git diff a488354 1
 2. **Version 0.4.0, not 0.3.0.** The branch base is 0.2.0. The separately prepared, unmerged release branch `chore/release-0.3.0` claims 0.3.0, so this minor bump takes the next free minor version. The CHANGELOG entry is `0.4.0 - Unreleased`. Expect a merge conflict in `pyproject.toml` and `CHANGELOG.md` against the 0.3.0 release; resolve it by keeping both entries.
 3. **Pre-commit is not installed as a git hook in this checkout.** The commits ran no hooks. The full hook set was run manually before each GREEN commit (all passed). The RED commits used `SKIP=pytest`, as planned, and no other hook was skipped by intent.
 4. **E-1 found two defects that the fake-socket harness could not see.** (a) Every real upgrade got HTTP 403, because `WebSocket` was imported only under `TYPE_CHECKING` and FastAPI could not inject it. The fake socket bypassed FastAPI injection by capturing the handler directly. (b) Genesys probes carry the nil UUID, not JSON `null`, so a probe was bound as a call. The FR's protocol facts, glossary and lifecycle text are corrected in place and marked "corrected by E-1". The intent (a probe never binds) is unchanged.
-5. **E-1 "audio both ways" needs a client patch.** The pinned reference client (`2871b01`, which is also upstream HEAD) treats every server binary message as fatal (`signalFatalError(415, 'Unexpected binary message')`). It predates the Audio Connector's bidirectional audio. E-1 was therefore run as three sub-runs (below). Whether E-1c's one-function local client patch satisfies the frozen E-1 wording is an **owner decision**.
+5. **E-1 "audio both ways" needs a client patch.** The pinned reference client (`2871b01`, which is also upstream HEAD) treats every server binary message as fatal (`signalFatalError(415, 'Unexpected binary message')`). It predates the Audio Connector's bidirectional audio. E-1 was therefore run as three sub-runs (below). Whether E-1c's one-function local client patch satisfies the frozen E-1 wording was an owner decision. **Owner decision, 2026-11-03 (@sheikkinen): E-1c with the patched client is accepted as meeting E-1.** Bot-to-Genesys audio against real Genesys is still verified in E-2.
 
 **Field evidence**
 
