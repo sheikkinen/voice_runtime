@@ -16,7 +16,7 @@
 - **AudioHook:** the WebSocket protocol, version 2, that Genesys Cloud uses to stream call audio to an external server.
 - **Audio Connector:** the Genesys Architect action that uses AudioHook **in both directions**. The caller's audio comes to us, and our bot's audio goes back to the caller. Our use case.
 - **Client / server:** Genesys is the **client**: it opens the WebSocket. We are the **server**. VR-008 is the opposite role (we act as Genesys).
-- **Probe session:** a session Genesys opens when an integration is set up or tested. Its `open` has a null `conversationId`, and no caller is on the line.
+- **Probe session:** a session Genesys opens when an integration is set up or tested. Its `open` carries the nil UUID `00000000-0000-0000-0000-000000000000` as `conversationId` or `participant.id` (corrected by E-1; JSON `null` is also treated as a probe), and no caller is on the line.
 - **Mark:** voice_runtime's playback sync point. `VoiceSession.send_mark_and_wait(name)` blocks until the transport calls `signal_mark_received(name)`. On Twilio, Twilio echoes the mark when playback reaches it. AudioHook has **no wire-level mark**, so this transport emulates one.
 - **Byte clock:** the number of outbound audio bytes this transport has handed to the socket. PCMU at 8 kHz is 8000 bytes per second, so the bytes sent divided by 8000 approximates the seconds of audio handed over.
 - **PCMU:** G.711 μ-law, 8 kHz, mono. 1 byte per sample. μ-law silence is `0xFF`.
@@ -73,7 +73,7 @@ Taken from the Genesys AudioHook protocol reference and security pages, and from
 
 | Message | Contents and our duty |
 |---|---|
-| `open` | Contains `organizationId`, `conversationId` (null for a probe), `participant{id, ani, aniName, dnis}`, offered `media[]`, `language` and `inputVariables`. We must answer `opened` **within 5 s**. |
+| `open` | Contains `organizationId`, `conversationId` (nil UUID for a probe; corrected by E-1), `participant{id, ani, aniName, dnis}`, offered `media[]`, `language` and `inputVariables`. We must answer `opened` **within 5 s**. |
 | `ping` | Answer `pong` within 5 s. |
 | `close` | `reason` is `end`, `error`, `disconnect` (the answer to our `disconnect`) or `reconnect`. We must answer `closed` **within 10 s**. |
 | `update` | Answer `updated`. |
@@ -139,8 +139,8 @@ def register_audiohook_websocket(
 **Session lifecycle (judgement R-1, R-2).**
 - **Writer first.** The writer task is created immediately after `accept`, before any protocol frame is sent (see Single writer).
 - **Bound.** A session becomes *bound* only after the API-key, header and `open` organization checks pass, compatible media is selected, and `opened` has been flushed. Before that point (authentication failure, probe, unsupported media) the handler never mutates `call_sid`, `caller_number`, `stream_sid`, STT or disconnected state.
-- **Probe.** On `open` with a null `conversationId`: queue `opened` with the chosen media and await its flush, then answer the later `close` with `closed`. Never bind the session or create STT.
-- **Call.** On `open` with a `conversationId`:
+- **Probe.** On `open` whose `conversationId` or `participant.id` is the nil UUID, or whose `conversationId` is JSON `null` (corrected by E-1): queue `opened` with the chosen media and await its flush, then answer the later `close` with `closed`. Never bind the session or create STT.
+- **Call.** On any other `open`:
   1. Choose the offered PCMU 8000 `external` entry unchanged. If none is offered, send `disconnect{reason:"error"}` through the writer, flush it and close without binding.
   2. Queue `opened` as the first outbound frame and await its flush.
   3. Bind: set `session.call_sid = conversationId` and `session.caller_number = participant.ani`, then call `session.signal_ws_connected(<Audiohook session id>)`. The session id doubles as `stream_sid`, which `request_clear_buffer` needs.
@@ -320,7 +320,7 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 
 ## Implementation record
 
-**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server` (local; not pushed). E-1 pending (pre-merge). E-2 not started (pre-release, C-4).
+**Status:** GREEN, docs and metadata done on `feat/vr-011-audiohook-server` (local; not pushed). E-1 run 2026-11-03: it found two defects, both fixed test-first. One E-1 sub-gate needs an owner decision (see Field evidence). E-2 not started (pre-release, C-4).
 
 **Commits**
 
@@ -328,9 +328,14 @@ Revised by the judgement (round 1, R-1 to R-5). The wording below is the judgeme
 |---|---|---|
 | RED | `a488354` | `tests/test_vr011_audiohook_server.py`: 35 witnesses, committed with `SKIP=pytest`. RED run: 1 failed (AC-01 `find_spec`), 34 skipped on the missing module. |
 | GREEN | `119b692` | `audiohook_server.py`, `_audiohook_writer.py`, `_stt_lifecycle.py`, the `twilio_ws.py` call site (+2 −18). |
-| Docs | this commit | README section, CHANGELOG 0.4.0, `pyproject.toml` 0.4.0, this record. |
+| Docs | `789130f` | README section, CHANGELOG 0.4.0, `pyproject.toml` 0.4.0, first version of this record. |
+| RED (E-1 #1) | `d3415a9` | `test_ac04_probe_through_real_fastapi_route`: real Starlette upgrade via `TestClient`. Failed with `WebSocketDisconnect` (HTTP 403). |
+| GREEN (E-1 #1) | `37d6203` | Import `WebSocket` at runtime so FastAPI can resolve the endpoint annotation. |
+| RED (E-1 #2) | `3a1a09a` | `test_ac04_probe_nil_uuid[nil-conversation, nil-participant]`: 2 failed, 36 passed. The harness `push_open` gained a `participant_id` argument (additive). |
+| GREEN (E-1 #2) | `16526ae` | `_is_probe`: nil-UUID `conversationId` or `participant.id`, or JSON `null`. |
+| Record | this commit | E-1 evidence and FR protocol-fact corrections. |
 
-The test file is unchanged between RED and GREEN (`git diff a488354 HEAD -- tests/` is empty).
+The test file was unchanged between the first RED and GREEN (`git diff a488354 119b692 -- tests/` is empty). Later test changes are only the two E-1 witnesses and the additive `push_open` argument.
 
 **Witness map** (all in `tests/test_vr011_audiohook_server.py`, module-level `pytestmark = req("VR-011")`)
 
@@ -339,7 +344,7 @@ The test file is unchanged between RED and GREEN (`git diff a488354 HEAD -- test
 | AC-01 | `test_ac01_audiohook_server_module_exists` and the RED run above |
 | AC-02 | `test_ac02_registration_validation[*]`, `test_ac02_secrets_absent_from_logs` |
 | AC-03 | `test_ac03_unauthorized[*]` |
-| AC-04 | `test_ac04_probe` |
+| AC-04 | `test_ac04_probe`, `test_ac04_probe_nil_uuid[*]`, `test_ac04_probe_through_real_fastapi_route` |
 | AC-05 | `test_ac05_call_open_binds_after_opened`, `test_ac05_secondary_factory_tee`, `test_ac05_unsupported_media` |
 | AC-06 | `test_ac06_envelope_and_sequencing` |
 | AC-07 | `test_ac07_sequence_fault[*]` |
@@ -359,8 +364,8 @@ The test file is unchanged between RED and GREEN (`git diff a488354 HEAD -- test
 
 **Commands and results** (Python 3.12, yamlgraph root venv)
 
-- Focused: `python -m pytest tests/test_vr011_audiohook_server.py -q --no-cov` → 35 passed.
-- Full: `python -m pytest tests/ -q --no-cov` → 675 passed, 1 skipped. The 9 or 10 `RuntimeWarning: coroutine ... never awaited` warnings are attributed to older test modules (`test_nc170_*`, `test_nc260_*`, `test_session.py`, ...), and their count varies between identical runs. None comes from VR-011.
+- Focused: `python -m pytest tests/test_vr011_audiohook_server.py -q --no-cov` → 35 passed at `119b692`; 38 passed at `16526ae`.
+- Full: `python -m pytest tests/ -q --no-cov` → 675 passed, 1 skipped at `119b692`; 678 passed, 1 skipped at `16526ae`. The 9 or 10 `RuntimeWarning: coroutine ... never awaited` warnings are attributed to older test modules (`test_nc170_*`, `test_nc260_*`, `test_session.py`, ...), and their count varies between identical runs. None comes from VR-011.
 - `ruff check voice_runtime/` → all checks passed. `ruff format --check voice_runtime/transports/ tests/test_vr011_audiohook_server.py` → formatted.
 - `pre-commit run --files voice_runtime/transports/*.py tests/test_vr011_audiohook_server.py` → all hooks passed, including the file-size gate and radon (no new function is grade C or worse).
 - Artifact: `uvx --from build pyproject-build --wheel` → `voice_runtime-0.4.0-py3-none-any.whl`, 30 files. It contains `transports/audiohook_server.py`, `_audiohook_writer.py` and `_stt_lifecycle.py`. No `tests/`, `feature-requests/` or `.env*`. The `pyproject.toml` diff is the version line only, so no dependency is added.
@@ -369,11 +374,23 @@ The test file is unchanged between RED and GREEN (`git diff a488354 HEAD -- test
 
 1. **D-1 is split across two files.** The first draft of `audiohook_server.py` had 517 lines, which fails the 450-line pre-commit gate. `_Writer` and `_Mark` moved to the private `voice_runtime/transports/_audiohook_writer.py`, which receives the clock as injected `now`/`sleep` callables. `audiohook_server.py` passes late-bound lambdas over its module-level `_now`/`_sleep`, so the test seam is unchanged. It re-exports `PACKET_BYTES` and `PACKET_INTERVAL_S` via `__all__`. The public surface is still only `register_audiohook_websocket`. The reviewer should confirm that this private module stays within D-1.
 2. **Version 0.4.0, not 0.3.0.** The branch base is 0.2.0. The separately prepared, unmerged release branch `chore/release-0.3.0` claims 0.3.0, so this minor bump takes the next free minor version. The CHANGELOG entry is `0.4.0 - Unreleased`. Expect a merge conflict in `pyproject.toml` and `CHANGELOG.md` against the 0.3.0 release; resolve it by keeping both entries.
-3. **Pre-commit is not installed as a git hook in this checkout.** The commits ran no hooks. The full hook set was run manually (result above). The RED commit used `SKIP=pytest`, as planned, and no other hook was skipped by intent.
+3. **Pre-commit is not installed as a git hook in this checkout.** The commits ran no hooks. The full hook set was run manually before each GREEN commit (all passed). The RED commits used `SKIP=pytest`, as planned, and no other hook was skipped by intent.
+4. **E-1 found two defects that the fake-socket harness could not see.** (a) Every real upgrade got HTTP 403, because `WebSocket` was imported only under `TYPE_CHECKING` and FastAPI could not inject it. The fake socket bypassed FastAPI injection by capturing the handler directly. (b) Genesys probes carry the nil UUID, not JSON `null`, so a probe was bound as a call. The FR's protocol facts, glossary and lifecycle text are corrected in place and marked "corrected by E-1". The intent (a probe never binds) is unchanged.
+5. **E-1 "audio both ways" needs a client patch.** The pinned reference client (`2871b01`, which is also upstream HEAD) treats every server binary message as fatal (`signalFatalError(415, 'Unexpected binary message')`). It predates the Audio Connector's bidirectional audio. E-1 was therefore run as three sub-runs (below). Whether E-1c's one-function local client patch satisfies the frozen E-1 wording is an **owner decision**.
 
 **Field evidence**
 
-- E-1: pending.
+- **E-1, 2026-11-03.** Harness: the pinned client `purecloudlabs/audiohook-reference-implementation@2871b01`. Dependencies were installed from the public npm registry without the lockfile, which points at an internal Genesys mirror. It ran under `ts-node` with transpile-only and a pseudo-terminal (`script`), because the client needs a TTY. The server was a temporary FastAPI app (gitignored `tmp/e1_app.py`) that registers this transport on `ws://127.0.0.1:8799/audiohook` with one `VoiceSession` and a scripted bot thread (`wait_for_ws_connect`, `put_outbound_sync` of 2.0 s of μ-law tone, `send_mark_and_wait`, `request_disconnect`, `reset`). No production keys and no network exposure.
+
+  | Run | Client | Result |
+  |---|---|---|
+  | E-1a probe | unmodified, `--connection-probe` | `opened` with `[PCMU 8000 external]` in 30 ms, never bound, `close`→`closed`, WS 1000. **Pass.** |
+  | E-1a call | unmodified, tone, 3 s, no bot audio | `opened`, bound (`caller=+1-555-555-1234`), 2 ping/pong (RTT 3–20 ms), 24,000 B inbound = 150 frames of 160 B, `close`→`closed`, WS 1000, one `Call disconnected`. No protocol `error`; the client's sequence checks passed. **Pass.** |
+  | E-1a wrong key | unmodified, wrong `X-API-KEY` | `disconnect(unauthorized, "unauthorized")` 503 ms after accept, never bound, socket closed. The client warns "closed unexpectedly in state CLOSING", because we close right after the disconnect instead of waiting for its `close` (AC-03 wording: "flush it, and close"). **Pass.** |
+  | E-1b bot audio | unmodified | The client raised `error 415` on the first 1,600 B packet and sent `close(error)`. We logged `code=415`, answered `closed`, and disconnected once. This shows the client limitation and our error path. **Limitation, not a pass.** |
+  | E-1c both ways | `onBinaryMessage` patched locally to count bytes instead of failing (patch below) | 10 packets × 1,600 B = 16,000 B (exactly 2.0 s), 200 ms apart, pongs interleaved. The byte-clock mark resolved after 2.044 s for 2.0 s of audio. `disconnect(completed)`→client `close`→`closed`, WS 1000. 20,800 B inbound = 130 frames. **Pass with a patched client.** |
+
+  E-1c client patch (in `app/audiohook/src/client/clientsessionimpl.ts`, reverted after the run): the body of `onBinaryMessage` was replaced. Instead of `signalFatalError(415, ...)`, it adds `data.length` to a counter and logs it.
 - E-2: not started. C-4 blocks any tag or upload containing this transport.
 
 ## Source references

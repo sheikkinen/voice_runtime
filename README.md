@@ -359,8 +359,8 @@ register_audiohook_websocket(
 - **Ending:** `request_disconnect` sends `disconnect` (`completed`) with **empty
   `outputVariables`**, then waits up to 10 s for Genesys `close`. A Genesys
   `close` gets `closed`.
-- **Probe connections** (null `conversationId`) are answered but never bound
-  to the session.
+- **Probe connections** (nil UUID `00000000-…` as `conversationId` or
+  `participant.id`) are answered but never bound to the session.
 - **Single call per session:** one `VoiceSession` serves one call at a time,
   as with the Twilio transport.
 
