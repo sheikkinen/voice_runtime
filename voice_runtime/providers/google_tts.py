@@ -1,7 +1,8 @@
 """Google Cloud Text-to-Speech provider: Chirp 3 HD streaming, native mulaw.
 
 VR-013 §2: streaming_synthesize with MULAW 8 kHz, 160-byte frames, one
-non-daemon worker per call and a single 1 s cancellation budget (R-5).
+non-daemon worker per call and one cancellation budget from detection; a
+worker that outlives it is an explicit error (round 3, R-4).
 """
 
 from __future__ import annotations
@@ -31,7 +32,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_VOICE = "fi-FI-Chirp3-HD-Charon"
 FRAME_BYTES = 160
 _POLL_S = 0.05
-_CANCEL_BUDGET_S = 1.0
+# Event-to-return is at most 1 s: up to 50 ms polling + 0.90 s cancel and join
+# + scheduling margin (round 3, R-4).
+_CANCEL_BUDGET_S = 0.90
+_NOT_TERMINATED = "google_tts_worker_not_terminated"
 _MULAW_SILENCE = b"\xff"
 
 
@@ -157,6 +161,20 @@ class GoogleTTS:
             elif kind in ("eof", "error"):
                 return kind, payload
 
+    def _end_worker(
+        self, outcome: str, ctl: _CallControl, worker: threading.Thread
+    ) -> bool:
+        """Cancel (unless EOF) and join within one budget; True if it ended."""
+        deadline = time.monotonic() + _CANCEL_BUDGET_S
+        if outcome != "eof" and ctl.cancel():
+            self._client = None
+        worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        if not worker.is_alive():
+            return True
+        logger.error("Google TTS worker still alive after cancel budget")
+        self._client = None
+        return False
+
     def speak(
         self,
         text: str,
@@ -199,13 +217,12 @@ class GoogleTTS:
         try:
             outcome, error = self._pump(out, session, stop_event, carry)
         finally:
-            deadline = time.monotonic() + _CANCEL_BUDGET_S
-            if outcome != "eof" and ctl.cancel():
-                self._client = None
-            worker.join(timeout=max(0.0, deadline - time.monotonic()))
-            if worker.is_alive():
-                logger.error("Google TTS worker still alive after cancel budget")
+            ended = self._end_worker(outcome, ctl, worker)
 
+        if not ended:
+            if self.on_error:
+                self.on_error(_NOT_TERMINATED)
+            return {"last_spoken": text, "error": _NOT_TERMINATED}
         if outcome == "interrupted":
             logger.info("Barge-in interrupt (Google)")
             return {"last_spoken": text, "interrupted": True}

@@ -186,6 +186,13 @@ Retryable errors reconnect after 1, 2 and 4 s; after three failed
 replacements, or on an authorisation or argument error, `on_error` fires
 once and the session ends.
 
+**TTS cancellation.** When `stop_event` is set or the call disconnects,
+`speak()` returns within 1 s with `interrupted` or `call_disconnected`. If
+the SDK read cannot be ended within that time, `speak()` instead fires
+`on_error("google_tts_worker_not_terminated")` once and returns
+`{"last_spoken": text, "error": "google_tts_worker_not_terminated"}`; the
+next `speak()` uses a fresh client.
+
 ## SttProvider Protocol
 
 All STT providers implement this structural protocol (defined in `providers/__init__.py`):
