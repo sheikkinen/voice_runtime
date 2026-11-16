@@ -143,3 +143,12 @@ Not authorized: VR-014 implementation; CSAP or black-box repository edits, deplo
 | C-7 | Tagging, publication and deployment require separate explicit human authority; use the actual next-minor release rule and all required package/live evidence. | GATE |
 
 Authority granted: none by this advisory draft; after human promotion and committed R-1 through R-6, authority may cover only the frozen Google provider extension, offline tests, local artifacts and documentation, with live probes, CI edits and release still subject to their separate human gates.
+
+## Round 2 (Amendment A-1) — human decision record — 2026-11-16
+
+The YAMLGraph judge route (CSAP `scripts/judge.sh`) re-judged Amendment A-1 at voice_runtime `cdb504e`. Draft verdict: APPROVED WITH REVISIONS, R-1 (restate the Q2 rationale as an explicit owner waiver of unmeasured forced-swap loss), R-2 (live probe must prove post-swap transcription) and R-3 (cancel-plus-join budget of 950 ms after detection).
+
+Owner decision (Sami Heikkinen):
+
+- **Draft not promoted.** None of R-1 to R-3 is folded; Amendment A-1 and the FR stand as committed at `cdb504e`. The round-2 draft is advisory and is not adopted.
+- **Waiver accepted.** The owner accepts that a forced swap may lose an in-flight utterance, including content spoken before the cut, unmeasured and without a loss bound. This supersedes round-1 C-3 for this library release.
