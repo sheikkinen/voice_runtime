@@ -34,7 +34,7 @@ jobs:
         run: sudo apt-get install -y ffmpeg
 
       - name: Install dependencies
-        run: pip install -e ".[dev,elevenlabs,azure]"
+        run: pip install -e ".[dev,elevenlabs,azure,google]"
 
       - name: Run tests
         run: pytest tests/ -q

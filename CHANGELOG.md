@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0 - Unreleased
+
+### Added
+
+- **VR-013**: Google Chirp 3 speech providers behind the existing
+        protocols, installed with the new `google` extra.
+        `get_stt_class("google")` / `create_stt("google")` return
+        `GooglePersistentStt` (streaming STT v2, `chirp_3`, mu-law 8 kHz,
+        `eu` endpoint, 1x real-time pacing, stream rotation before the
+        5-minute limit, bounded reconnect). `create_tts("google")` returns
+        `GoogleTTS` (streaming Chirp 3 HD voices, raw mu-law 8 kHz).
+        Authentication is Application Default Credentials only.
+        `on_recognizing` fires once per speech segment, not per word as
+        with Azure. Installs without the extra are unchanged.
+
 ## 0.4.0 - Unreleased
 
 ### Added
