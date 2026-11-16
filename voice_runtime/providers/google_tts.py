@@ -7,9 +7,7 @@ non-daemon worker per call and a single 1 s cancellation budget (R-5).
 from __future__ import annotations
 
 import logging
-import os
 import queue
-import re
 import threading
 import time
 from collections.abc import Callable
@@ -18,21 +16,23 @@ from typing import TYPE_CHECKING, Any
 from google.api_core.client_options import ClientOptions
 from google.cloud import texttospeech
 
+from voice_runtime.providers._google_config import (
+    DEFAULT_LOCATION,
+    env_or,
+    resolve_project,
+    snake,
+)
+
 if TYPE_CHECKING:
     from voice_runtime.session import VoiceSession
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_VOICE = "fi-FI-Chirp3-HD-Charon"
-DEFAULT_LOCATION = "eu"
 FRAME_BYTES = 160
 _POLL_S = 0.05
 _CANCEL_BUDGET_S = 1.0
 _MULAW_SILENCE = b"\xff"
-
-
-def _snake(name: str) -> str:
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
 class _CallControl:
@@ -78,26 +78,9 @@ class GoogleTTS:
         location: str | None = None,
         voice_name: str | None = None,
     ) -> None:
-        if project is not None:
-            if not project:
-                raise ValueError("GoogleTTS: explicit project must not be empty")
-            self._project: str | None = project
-        else:
-            self._project = (
-                os.getenv("GOOGLE_SPEECH_PROJECT")
-                or os.getenv("GOOGLE_CLOUD_PROJECT")
-                or None
-            )
-        self._location = (
-            location
-            if location is not None
-            else os.getenv("GOOGLE_SPEECH_LOCATION") or DEFAULT_LOCATION
-        )
-        self._voice_name = (
-            voice_name
-            if voice_name is not None
-            else os.getenv("GOOGLE_TTS_VOICE") or DEFAULT_VOICE
-        )
+        self._project = resolve_project(project, "GoogleTTS")
+        self._location = env_or(location, "GOOGLE_SPEECH_LOCATION", DEFAULT_LOCATION)
+        self._voice_name = env_or(voice_name, "GOOGLE_TTS_VOICE", DEFAULT_VOICE)
         self._language_code = "-".join(self._voice_name.split("-")[:2])
         self._client: Any = None
         self.on_error: Callable[[str], None] | None = None
@@ -147,6 +130,33 @@ class GoogleTTS:
         except Exception as exc:  # noqa: BLE001 — forwarded to speak(), not swallowed
             out.put(("error", exc))
 
+    @staticmethod
+    def _pump(
+        out: queue.Queue,
+        session: VoiceSession,
+        stop_event: threading.Event | None,
+        carry: bytearray,
+    ) -> tuple[str, Exception | None]:
+        """Emit worker audio as frames until EOF, error, stop or disconnect."""
+        while True:
+            try:
+                kind, payload = out.get(timeout=_POLL_S)
+            except queue.Empty:
+                kind, payload = "idle", None
+            if stop_event is not None and stop_event.is_set():
+                return "interrupted", None
+            if session.is_disconnected:
+                return "disconnected", None
+            if kind == "audio":
+                carry.extend(payload)
+                while len(carry) >= FRAME_BYTES:
+                    frame = bytes(carry[:FRAME_BYTES])
+                    del carry[:FRAME_BYTES]
+                    session.put_outbound_sync(frame)
+                    session.tap_agent(frame)
+            elif kind in ("eof", "error"):
+                return kind, payload
+
     def speak(
         self,
         text: str,
@@ -184,35 +194,10 @@ class GoogleTTS:
             daemon=False,
         )
         carry = bytearray()
-        outcome = "aborted"
-        error: Exception = RuntimeError("Google TTS worker exited without a result")
+        outcome, error = "aborted", None
         worker.start()
         try:
-            while True:
-                try:
-                    kind, payload = out.get(timeout=_POLL_S)
-                except queue.Empty:
-                    kind, payload = "idle", None
-                if stop_event is not None and stop_event.is_set():
-                    outcome = "interrupted"
-                    break
-                if session.is_disconnected:
-                    outcome = "disconnected"
-                    break
-                if kind == "audio":
-                    carry.extend(payload)
-                    while len(carry) >= FRAME_BYTES:
-                        frame = bytes(carry[:FRAME_BYTES])
-                        del carry[:FRAME_BYTES]
-                        session.put_outbound_sync(frame)
-                        session.tap_agent(frame)
-                elif kind == "eof":
-                    outcome = "eof"
-                    break
-                elif kind == "error":
-                    outcome = "error"
-                    error = payload
-                    break
+            outcome, error = self._pump(out, session, stop_event, carry)
         finally:
             deadline = time.monotonic() + _CANCEL_BUDGET_S
             if outcome != "eof" and ctl.cancel():
@@ -230,7 +215,7 @@ class GoogleTTS:
         if outcome == "error":
             logger.error("Google TTS synthesis failed: %s", error)
             if self.on_error:
-                self.on_error(f"google_tts_{_snake(type(error).__name__)}")
+                self.on_error(f"google_tts_{snake(type(error).__name__)}")
             return {"last_spoken": text, "error": str(error)}
 
         if carry:

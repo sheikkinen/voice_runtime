@@ -14,8 +14,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
-import re
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
@@ -26,6 +24,8 @@ from google.api_core.client_options import ClientOptions
 from google.cloud.speech_v2 import SpeechAsyncClient
 from google.cloud.speech_v2.types import cloud_speech
 
+from voice_runtime.providers._google_config import SAMPLE_RATE_HZ, SttSettings, snake
+
 logger = logging.getLogger(__name__)
 
 # Time seams: tests replace these to drive a virtual clock.
@@ -33,11 +33,6 @@ _monotonic = time.monotonic
 _sleep = asyncio.sleep
 
 ECHO_DISCARD_WINDOW_S = 0.4
-DEFAULT_LOCATION = "eu"
-DEFAULT_MODEL = "chirp_3"
-DEFAULT_LANGUAGE = "fi-FI"
-DEFAULT_ENDPOINTING = "supershort"
-SAMPLE_RATE_HZ = 8000
 REQUEST_BYTES = 800  # 100 ms of 8 kHz mu-law
 _DRAIN_TIMEOUT_S = 5.0
 _ROTATE_AFTER_S = 270.0
@@ -48,12 +43,6 @@ _RECONNECT_MAX_DELAY_S = 30.0
 _MAX_REPLACEMENTS = 3
 _UNEXPECTED_EOF = "UnexpectedEOF"
 
-_Sensitivity = cloud_speech.StreamingRecognitionFeatures.EndpointingSensitivity
-_ENDPOINTING = {
-    "supershort": _Sensitivity.ENDPOINTING_SENSITIVITY_SUPERSHORT,
-    "short": _Sensitivity.ENDPOINTING_SENSITIVITY_SHORT,
-    "standard": _Sensitivity.ENDPOINTING_SENSITIVITY_STANDARD,
-}
 _SpeechEvent = cloud_speech.StreamingRecognizeResponse.SpeechEventType
 
 _RETRYABLE: tuple[type[Exception], ...] = (
@@ -69,29 +58,6 @@ _TERMINAL: tuple[type[Exception], ...] = (
     gexc.NotFound,
     gexc.ResourceExhausted,
 )
-
-
-def _snake(name: str) -> str:
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
-
-
-def _parse_hints(raw: Sequence[str] | None) -> tuple[str, ...]:
-    """Normalise phrase hints: strip, drop empty, keep order (R-4)."""
-    if raw is None:
-        env = os.getenv("GOOGLE_STT_PHRASES")
-        items: list[Any] = env.split(",") if env else []
-    elif isinstance(raw, str):
-        raise ValueError("phrase_hints must be a sequence of strings, not a str")
-    else:
-        items = list(raw)
-    hints: list[str] = []
-    for item in items:
-        if not isinstance(item, str):
-            raise ValueError(f"phrase hint {item!r} is not a string")
-        hint = item.strip()
-        if hint:
-            hints.append(hint)
-    return tuple(hints)
 
 
 async def _wait_any(events: Sequence[asyncio.Event], timeout: float | None) -> bool:
@@ -144,44 +110,9 @@ class GooglePersistentStt:
         phrase_hints: Sequence[str] | None = None,
         endpointing: str | None = None,
     ) -> None:
-        if project is not None:
-            if not project:
-                raise ValueError("GooglePersistentStt: explicit project is empty")
-            self._project: str | None = project
-        else:
-            self._project = (
-                os.getenv("GOOGLE_SPEECH_PROJECT")
-                or os.getenv("GOOGLE_CLOUD_PROJECT")
-                or None
-            )
-        self._location = (
-            location
-            if location is not None
-            else os.getenv("GOOGLE_SPEECH_LOCATION") or DEFAULT_LOCATION
+        self._cfg = SttSettings.resolve(
+            project, location, model, language_code, phrase_hints, endpointing
         )
-        self._model = (
-            model
-            if model is not None
-            else os.getenv("GOOGLE_STT_MODEL") or DEFAULT_MODEL
-        )
-        self._language_code = (
-            language_code
-            if language_code is not None
-            else os.getenv("GOOGLE_STT_LANGUAGE") or DEFAULT_LANGUAGE
-        )
-        self._phrase_hints = _parse_hints(phrase_hints)
-        sensitivity = (
-            endpointing
-            if endpointing is not None
-            else os.getenv("GOOGLE_STT_ENDPOINTING") or DEFAULT_ENDPOINTING
-        )
-        if sensitivity not in _ENDPOINTING:
-            raise ValueError(
-                f"GooglePersistentStt: endpointing {sensitivity!r} is not one of "
-                f"{', '.join(_ENDPOINTING)}"
-            )
-        self._endpointing = _ENDPOINTING[sensitivity]
-
         self._client: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stopping = False
@@ -216,7 +147,7 @@ class GooglePersistentStt:
 
     async def start(self, inbound_queue: asyncio.Queue[bytes | None]) -> None:
         """Create the client and start the feeder and the session owner."""
-        if not self._project:
+        if not self._cfg.project:
             raise ValueError(
                 "GooglePersistentStt: no project; set GOOGLE_SPEECH_PROJECT "
                 "or GOOGLE_CLOUD_PROJECT"
@@ -225,17 +156,17 @@ class GooglePersistentStt:
         self._stopping = False
         self._client = SpeechAsyncClient(
             client_options=ClientOptions(
-                api_endpoint=f"{self._location}-speech.googleapis.com",
-                quota_project_id=self._project,
+                api_endpoint=f"{self._cfg.location}-speech.googleapis.com",
+                quota_project_id=self._cfg.project,
             )
         )
         self._feed_task = self._schedule_owned(self._feed(inbound_queue))
         self._schedule_owned(self._run())
         logger.info(
             "GooglePersistentStt started (lang=%s model=%s location=%s)",
-            self._language_code,
-            self._model,
-            self._location,
+            self._cfg.language_code,
+            self._cfg.model,
+            self._cfg.location,
         )
 
     async def stop(self) -> None:
@@ -274,41 +205,7 @@ class GooglePersistentStt:
 
     def _build_config_request(self) -> cloud_speech.StreamingRecognizeRequest:
         """Build the first request of every stream (VR-013 §1 Config)."""
-        config = cloud_speech.RecognitionConfig(
-            explicit_decoding_config=cloud_speech.ExplicitDecodingConfig(
-                encoding=cloud_speech.ExplicitDecodingConfig.AudioEncoding.MULAW,
-                sample_rate_hertz=SAMPLE_RATE_HZ,
-                audio_channel_count=1,
-            ),
-            model=self._model,
-            language_codes=[self._language_code],
-        )
-        if self._phrase_hints:
-            config.adaptation = cloud_speech.SpeechAdaptation(
-                phrase_sets=[
-                    cloud_speech.SpeechAdaptation.AdaptationPhraseSet(
-                        inline_phrase_set=cloud_speech.PhraseSet(
-                            phrases=[
-                                cloud_speech.PhraseSet.Phrase(value=hint)
-                                for hint in self._phrase_hints
-                            ]
-                        )
-                    )
-                ]
-            )
-        return cloud_speech.StreamingRecognizeRequest(
-            recognizer=(
-                f"projects/{self._project}/locations/{self._location}/recognizers/_"
-            ),
-            streaming_config=cloud_speech.StreamingRecognitionConfig(
-                config=config,
-                streaming_features=cloud_speech.StreamingRecognitionFeatures(
-                    interim_results=True,
-                    enable_voice_activity_events=True,
-                    endpointing_sensitivity=self._endpointing,
-                ),
-            ),
-        )
+        return self._cfg.config_request()
 
     async def _requests(
         self, stream: _Stream
@@ -373,7 +270,7 @@ class GooglePersistentStt:
                     failures = 0
                     continue
                 if outcome.kind == "terminal":
-                    self._fire_error(f"google_stt_{_snake(outcome.name)}")
+                    self._fire_error(f"google_stt_{snake(outcome.name)}")
                     return
                 if outcome.succeeded:
                     failures = 0
@@ -545,7 +442,7 @@ class GooglePersistentStt:
         lag_ms = -1 if end_at is None else round((now - end_at) * 1000)
         logger.info(
             "Google STT committed lang=%s commit_lag_ms=%d chars=%d",
-            self._language_code,
+            self._cfg.language_code,
             lag_ms,
             len(cleaned),
         )
