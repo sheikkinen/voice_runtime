@@ -8,6 +8,7 @@ import os
 import shutil
 import struct
 import subprocess
+import tomllib
 import unicodedata
 from importlib import metadata
 from pathlib import Path
@@ -157,16 +158,22 @@ def _write_out(out_dir: str, provider: str, audio: bytes) -> None:
         f.write(audio)
 
 
-def _git_sha(package_dir: Path) -> str | None:
-    """HEAD of the voice-runtime checkout holding the package, else None."""
-    root = package_dir.parent
-    git = shutil.which("git")
+def _checkout_project(package_dir: Path) -> dict[str, Any] | None:
+    """The [project] table of a voice-runtime checkout holding the package."""
     try:
-        if (
-            not git
-            or 'name = "voice-runtime"' not in (root / "pyproject.toml").read_text()
-        ):
-            return None
+        data = tomllib.loads((package_dir.parent / "pyproject.toml").read_text())
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    project = data.get("project", {})
+    return project if project.get("name") == "voice-runtime" else None
+
+
+def _git_sha(root: Path) -> str | None:
+    """HEAD of the git checkout whose top level is ``root``, else None."""
+    git = shutil.which("git")
+    if not git:
+        return None
+    try:
         # noqa S603: fixed argv, absolute git path, no shell and no user input
         proc = subprocess.run(  # noqa: S603
             [git, "-C", str(root), "rev-parse", "--show-toplevel", "HEAD"],
@@ -190,11 +197,14 @@ def _meta(args: argparse.Namespace, file: str) -> dict[str, Any]:
         except metadata.PackageNotFoundError:
             return None
 
+    package_dir = Path(file).resolve().parent
+    # In a checkout, installed metadata can be a stale editable install
+    project = _checkout_project(package_dir)
     meta: dict[str, Any] = {
         "type": "meta",
-        "version": version("voice-runtime"),
+        "version": project.get("version") if project else version("voice-runtime"),
         "file": file,
-        "sha": _git_sha(Path(file).resolve().parent),
+        "sha": _git_sha(package_dir.parent) if project else None,
         "sdk": {d: version(d) for d in _SDKS},
         "stt_language_code": os.environ.get("STT_LANGUAGE_CODE"),
     }
