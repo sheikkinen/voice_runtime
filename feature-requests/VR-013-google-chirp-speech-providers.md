@@ -376,21 +376,31 @@ Raw output: `tmp/vr013-live.log` (not committed).
 **Change (proposed).** Replace the AC-12 word-list probe with natural-paragraph input:
 
 - **Input.** About 12 to 15 fixed, distinct synthetic Finnish paragraphs, each 2 to 4 sentences. Use everyday or clinic-reception style text with no real caller or patient data and no numbers. Each paragraph is followed by 1.5 s of silence, and the layout fills 300 s, as now.
-- **Scoring.**
-  - Normalise both sides: lowercase and strip punctuation.
-  - Align the reference words with the committed words and report the substitutions, insertions and deletions, the word error rate (WER), and the alignment within ±5 s of the rotation.
+- **Scoring (owner rule, 2026-11-16).** "missing punctuation interpreted as full success. next phase llm would not mind the whitespace."
+  - Compare case-, punctuation- and **whitespace-insensitively**. Remove all spaces and punctuation from both sides, align the character streams, and count a reference word as matched when all of its characters align. A joined word (`kohtametsä`) or a shifted word boundary (`kohtan orsu` for `kohta norsu`) is a match.
+  - Report the matched-word share, each unmatched reference word, the inserted text, and the alignment within ±5 s of the rotation.
 - **Pass.**
   - No provider error or timeout.
   - One ordinary rotation (`forced=false`) after 270 s and no forced rotation.
-  - No run of 3 or more consecutive deleted reference words anywhere, which would indicate lost audio rather than misrecognition.
-  - WER is reported, not gated (open question below).
+  - No run of 3 or more consecutive unmatched reference words anywhere, which would indicate lost audio rather than misrecognition.
+  - The matched-word share is reported, not gated (open question below).
 - **Probe defect fix.** After the end-of-input sentinel, wait until no commit has arrived for 3 s, at most 15 s, instead of a fixed 6 s. This leaves the post-rotation backlog time to drain (D-1) before `stop()`.
-- **Docs.** README and Open risks add that an ordinary rotation can split the utterance in flight across two streams (run 1: `norsu` → `kohtan` + `orsu`).
+- **Docs.** README and Open risks add that an ordinary rotation can split the utterance in flight across two streams. It is harmless under whitespace-insensitive matching (run 1: `norsu` → `kohtan` + `orsu`).
+
+**Run 1 re-scored under the owner rule (offline, from `tmp/vr013-live.log`; no new live call).**
+
+- **Matched: 91 of 98 reference words (92.9 %).** All 20 words joined to `kohta` (`kohtametsä`, …) match, and the rotation-boundary word `norsu` (`kohtan orsu`) matches, so there is no loss at the rotation.
+- **Misrecognised (5):** `sade`→`ohtafari`, `orava siili`→`seuraava fiili`, `varis`→`lais`, `delfiini`→`corpo dela filme`.
+- **Inserted text:** `kohpa`, `pultti`, and a trailing `t` on `kilpikonnat`. The stem matches, so `kilpikonna` counts as matched.
+- **Cut off at the end (2):** `pallo`, `nukke`. This is the probe tail-wait defect above, not a provider fault.
+- **Longest unmatched run:** 2 (`orava siili`, and the final `pallo nukke`).
+- **Verdict under the proposed pass rule:** the provider criteria pass (no error, ordinary rotation at 273.4 s, no 3-word loss run). The 2-word end cut-off stays under the threshold only by chance, so the tail fix and one re-run (paragraph input) are still recommended before AC-12 is ticked.
 
 **Open questions for the owner.**
 
-1. Should WER have a release threshold, or is it reported only?
-2. Is a 3-word deletion run the right loss signal?
+1. Should the matched-word share have a release threshold, or is it reported only?
+2. Is a run of 3 unmatched words the right loss signal?
+3. Should AC-12 be ticked from the re-scored run 1, or only after a paragraph re-run?
 
 **Unchanged.** The provider code, the rotation design (D-2), and AC-01 to AC-11 and AC-13.
 
