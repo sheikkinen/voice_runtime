@@ -206,6 +206,91 @@ misrecognition can spoil three or more. It does not gate inserted text,
 duplicates or overall quality. In the recorded run (VR-013 evidence) the last
 two phrases were not transcribed; the cause is unconfirmed.
 
+## Speech check command-line tool (0.6.0, VR-014)
+
+`python -m voice_runtime.speech_check` checks the speech providers with
+synthetic speech. It ships in the wheel, so it can run where the consumer runs.
+There is no console-script entry point.
+
+```bash
+# TTS then STT for every provider pair (default mode: roundtrip)
+python -m voice_runtime.speech_check --provider azure --provider elevenlabs --out tmp/check
+# One synthesiser, another recogniser
+python -m voice_runtime.speech_check --provider azure --stt-provider elevenlabs
+# TTS only, or STT on a file you chose
+python -m voice_runtime.speech_check --provider google --mode tts
+python -m voice_runtime.speech_check --provider azure --mode stt --audio in.wav --text "..."
+```
+
+| Option | Meaning |
+|---|---|
+| `--provider NAME` | repeatable: `azure`, `elevenlabs`, `google` or `all` (default `all`); duplicates are dropped, the first occurrence kept |
+| `--mode MODE` | `tts`, `stt` or `roundtrip` (default) |
+| `--text TEXT` | synthesis text and WER reference |
+| `--audio PATH` | `stt` mode only: raw `.ulaw`, or 8 kHz mono WAV as μ-law (tag 7) or 16-bit PCM |
+| `--stt-provider NAME` | `roundtrip` only: the recogniser for every TTS output (default: the same provider) |
+| `--out DIR` | `tts`/`roundtrip`: write `<provider>.ulaw` and a μ-law `<provider>.wav` |
+| `--timeout SECONDS` | per step (default 30) |
+| `--max-wer RATIO` | WER threshold (default 0.2); only where a reference applies |
+| `--json` | stdout is JSON lines: a `meta` object, then one `result` per row |
+
+Example (AC-10 live run, Finnish STT):
+
+```text
+provider | stt_provider | step | status | first_audio_ms | total_ms | commits | lag_ms | wer | detail
+azure | - | tts | PASS | 628 | 775 | - | - | - | bytes=37200 audio_s=4.650 recognizing=- keys=last_spoken
+azure | elevenlabs | stt | PASS | - | 10895 | 1 | 1146 | 0.000 | bytes=- audio_s=- recognizing=5 keys=- transcript='Hyvää huomenta! Haluaisin varata ajan lääkärille ensi viikolla.'
+```
+
+The header on stderr shows the voice_runtime version, its file and git SHA (only
+inside a voice-runtime checkout), the SDK versions, the Google project and
+location when Google is selected, and `STT_LANGUAGE_CODE`. The ElevenLabs STT
+language defaults to `en`, so set it (for example `fi`) to match the text.
+
+**Text and scoring.** In `tts` and `roundtrip` mode, the default text is
+`Hyvää huomenta, haluaisin varata ajan lääkärille ensi viikolla.` In `stt`
+mode, there is no reference unless `--text` is given, and then no WER is
+computed. The transcript is the commits joined with spaces. Both sides are
+lowercased, punctuation is removed and whitespace is collapsed; `ä` and `ö`
+are kept. WER is the word-level edit distance divided by the number of
+reference words. A row fails only when WER is **greater than** `--max-wer`.
+
+**Steps.** A TTS step fails when no audio is captured, the result has `error`,
+the provider's `on_error` fires, or an `--out` write fails. An STT step feeds
+20 ms frames, then 3 s of silence, and waits until 2 s pass with no new
+commit. It fails on no commits, `on_error`, any exception, or a `stop()` that
+raises or blocks. `lag_ms` runs from the last audio frame to the last commit.
+In roundtrip mode, if the TTS step fails or is skipped, its STT row is SKIP
+with `dependency: tts <status>`.
+
+**SKIP is not validation.** A row is SKIP only for these causes; everything
+else is FAIL:
+
+- the provider module is not in this voice_runtime version;
+- the provider's optional dependency is not installed (`azure.cognitiveservices.speech`,
+  `elevenlabs`, `google.cloud.speech_v2`, `google.cloud.texttospeech`);
+- missing configuration: `AZURE_SPEECH_KEY`, `ELEVENLABS_API_KEY`, or neither
+  `GOOGLE_SPEECH_PROJECT` nor `GOOGLE_CLOUD_PROJECT`;
+- Google only: no Application Default Credentials (`DefaultCredentialsError`).
+
+In roundtrip mode, both rows are SKIP, with no synthesis request, when the
+recogniser cannot run. SKIP reasons name variables and modules, never values.
+
+**Exit codes.** `0`: at least one step ran and every step that ran passed
+(SKIPs allowed). `1`: any FAIL. `2`: a usage error, or every step was SKIP.
+
+**Timeouts.** Each step runs in its own child process (spawn) with a deadline
+of `--timeout` seconds. At the deadline the row is FAIL `timeout`; the child
+gets 1 s to cancel cleanly (async work runs `stop()`, a running `speak` gets
+its stop event), then is terminated, then killed, so a step ends within
+`--timeout + 3` s and the next provider still runs. A terminated or killed
+child does **not** run `stop()`, and killing it does not cancel requests a
+remote service already accepted.
+
+**Caller recordings.** Use synthetic text or audio you made. Do not point
+`--audio` at caller or patient recordings on shared terminals: transcripts are
+printed to stdout.
+
 ## SttProvider Protocol
 
 All STT providers implement this structural protocol (defined in `providers/__init__.py`):

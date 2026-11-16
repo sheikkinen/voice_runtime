@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 - Unreleased
+
+### Added
+
+- **VR-014**: `python -m voice_runtime.speech_check`, a cross-provider
+        speech check. It runs `tts`, `stt` or `roundtrip` steps for
+        `azure`, `elevenlabs` and `google`, each in a spawned child process
+        with a per-step deadline (`--timeout`, default 30 s). It reports
+        first-audio and total time, captured bytes, commits, recognizing
+        events, commit lag and word error rate against the reference text
+        (`--max-wer`, default 0.2), as a table or JSON lines. Missing
+        provider modules, optional dependencies, configuration and Google
+        ADC are SKIP; everything else is FAIL. Exit codes: 0 pass, 1 any
+        FAIL, 2 usage error or all SKIP. No new runtime dependency.
+
 ## 0.5.0 - Unreleased
 
 ### Added
