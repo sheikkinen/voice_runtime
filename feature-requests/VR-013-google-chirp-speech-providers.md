@@ -368,6 +368,7 @@ Raw output: `tmp/vr013-live.log` (not committed).
 **Owner manual review (2026-11-16, Sami Heikkinen):** "chirp stt seems to add extra kohta- prefix on multiple cases. otherwise the wordlist seems okayish. recommendation: test with real paragraphs, not just a wordlist to see the effect more natural setting."
 
 - Implementer note: `Kohta` is spoken in every probe phrase (`"Kohta <word>."`). Chirp does not invent it; it often writes it joined to the next word (`kohtametsä`). A carrier word before an isolated noun is an unnatural input, which supports the owner's recommendation.
+- Owner follow-up (2026-11-16): "if kohta was in the real audio, then this is just punctuation issue, i.e. minor". The joined carrier word is classified as a **minor word-boundary/punctuation issue**, not as missing or invented content.
 - Run 1 therefore stays recorded as FAIL against the current rule. The recommended next step is Amendment A-2 below, which needs judging before the probe changes.
 
 ### Amendment A-2 — 2026-11-16 (draft; awaits owner confirmation and round-3 judgement)
