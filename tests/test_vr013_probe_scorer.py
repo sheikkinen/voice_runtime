@@ -6,6 +6,7 @@ Loads the actual probe script; no network, no SDK and no ADC.
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -19,8 +20,12 @@ PROBE = (
 def probe():
     spec = importlib.util.spec_from_file_location("probe_vr013_google_session", PROBE)
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    sys.modules[spec.name] = module  # @dataclass resolves its module here
+    try:
+        spec.loader.exec_module(module)
+        yield module
+    finally:
+        sys.modules.pop(spec.name, None)
 
 
 def _api(probe, name: str):
