@@ -35,7 +35,7 @@ RESULT FAIL: committed words differ from expected sequence
 - **Complete:** the ordered list of 98 target words (`expected`), stream opens (1.03 s, 274.42 s), the single rotation record (`age_s=273 forced=false drained=true`), errors (`[]`).
 - **Processed, not raw:** the `committed` line is the output of the original probe's `committed_words()`: each final transcript lower-cased, split on non-letters, and every **standalone** `kohta` token dropped. Joined forms (`kohtametsä`) are kept. Raw transcript texts, punctuation and the boundaries between final transcripts are not recoverable.
   - Effect on scoring: none on target letters. Under the whitespace- and punctuation-insensitive rule, the only lost content is standalone carrier words, which are not scored. The rescore below therefore treats each missing standalone carrier as an unmatched carrier.
-  - This is a known limit of the historical evidence. Using it for AC-12 needs the owner's explicit acceptance (see §3).
+  - This is a known limit of the historical evidence. The owner accepted it for AC-12 (see §3).
 - **Not recorded:** per-phrase feed times and per-commit receipt times. The ±5 s rotation-boundary timing view is **unavailable** for run 1 and is not inferred from word order.
 
 ## 2. Retrospective rescore under A-2 (offline, no network)
@@ -171,6 +171,6 @@ Reading:
 | No forced rotation | none |
 | No run of ≥ 3 consecutive unmatched targets | longest run 2 |
 
-**Retrospective PASS under A-2** (scorer above at `1b6fe8b`), subject to the owner accepting the processed `committed` line as the historical sequence (§1). The original FAIL, exit 1, stands.
+**Retrospective PASS under A-2** (scorer above at `1b6fe8b`), on the owner's evidence waiver: the processed `committed` line (§1) is accepted as the historical sequence (2026-11-16, Sami Heikkinen). The original FAIL, exit 1, stands.
 
 Limits of the 3-word rule: it detects a pattern, not its cause. Lost audio can remove one or two words, and misrecognition can spoil three or more. It does not gate inserted text, duplicates or overall quality.
