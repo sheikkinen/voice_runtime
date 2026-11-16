@@ -701,13 +701,15 @@ def test_table_detail_carries_metrics(tmp_path, capfd):
     assert "recognizing=2" in out
 
 
-def test_sha_none_outside_voice_runtime_checkout(tmp_path):
+def _meta_from_copy(tmp_path, pyproject: str | None = None):
     pkg_root = tmp_path / "copy"
     shutil.copytree(
         Path(sc.__file__).parent,
         pkg_root / "voice_runtime",
         ignore=shutil.ignore_patterns("__pycache__"),
     )
+    if pyproject is not None:
+        (pkg_root / "pyproject.toml").write_text(pyproject)
     env = {
         k: v
         for k, v in os.environ.items()
@@ -731,9 +733,19 @@ def test_sha_none_outside_voice_runtime_checkout(tmp_path):
         text=True,
         timeout=60,
     )
-    objects = _objects(proc.stdout)
-    meta = objects[0]
+    meta = _objects(proc.stdout)[0]
     assert meta["type"] == "meta"
     assert meta["file"].startswith(str(pkg_root))
-    assert meta["sha"] is None
     assert proc.returncode == 2
+    return meta
+
+
+def test_sha_none_outside_voice_runtime_checkout(tmp_path):
+    assert _meta_from_copy(tmp_path)["sha"] is None
+
+
+def test_checkout_version_comes_from_its_pyproject(tmp_path):
+    # A stale editable install's metadata must not name the checkout's version
+    pyproject = '[project]\nname = "voice-runtime"\nversion = "9.9.9"\n'
+    meta = _meta_from_copy(tmp_path, pyproject)
+    assert (meta["version"], meta["sha"]) == ("9.9.9", None)
