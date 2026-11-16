@@ -13,7 +13,11 @@
         `GoogleTTS` (streaming Chirp 3 HD voices, raw mu-law 8 kHz).
         Authentication is Application Default Credentials only.
         `on_recognizing` fires once per speech segment, not per word as
-        with Azure. Installs without the extra are unchanged.
+        with Azure. An ordinary stream rotation can split the utterance in
+        flight across two final transcripts. If a TTS stop or disconnect
+        cannot end the SDK read within 1 s, `speak()` returns the error
+        `google_tts_worker_not_terminated`. Installs without the extra are
+        unchanged.
 
 ## 0.4.0 - Unreleased
 

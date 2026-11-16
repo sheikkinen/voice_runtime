@@ -176,7 +176,10 @@ it. The transcript text is never logged.
 **Pacing and stream limits.** Audio is sent at most at 1x real time, in
 100 ms requests. Google closes a streaming connection after 5 minutes, so
 the STT replaces it: at the first final transcript after 270 s (ordinary
-swap, nothing lost), or forcibly at 290 s if the caller is still talking. A
+swap), or forcibly at 290 s if the caller is still talking. An ordinary swap
+can split the utterance in flight across the old and the new stream, so one
+word may arrive as two pieces in separate final transcripts (live probe:
+`kohta norsu` → `kohtan` + `orsu`). A
 forced swap at 290 s may lose the speech in flight, including words spoken
 before the cut; consumers whose sessions can run past 290 s with continuous
 speech must accept this. Audio queued while a stream is replaced or
@@ -192,6 +195,16 @@ the SDK read cannot be ended within that time, `speak()` instead fires
 `on_error("google_tts_worker_not_terminated")` once and returns
 `{"last_spoken": text, "error": "google_tts_worker_not_terminated"}`; the
 next `speak()` uses a fresh client.
+
+**Live probe.** `scripts/probe_vr013_google_session.py --project <p>` feeds
+300 s of synthetic `"Kohta <word>."` phrases through both providers and
+checks for an ordinary rotation and for runs of 3 or more consecutive
+unmatched words, compared case-, punctuation- and whitespace-insensitively;
+`--rescore <log>` re-scores an earlier log offline. The 3-word rule detects a
+pattern, not its cause: lost audio can remove one or two words, and
+misrecognition can spoil three or more. It does not gate inserted text,
+duplicates or overall quality. In the recorded run (VR-013 evidence) the last
+two phrases were not transcribed; the cause is unconfirmed.
 
 ## SttProvider Protocol
 
