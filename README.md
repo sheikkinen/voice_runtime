@@ -105,7 +105,7 @@ request_disconnect()      →  _disconnect_requested.set()  → watch_disconnect
 │ voice_runtime                                │
 │  - VoiceSession: queues, marks, intents      │
 │  - Factories: create_stt / create_tts        │
-│  - Providers: ElevenLabs, Azure (STT + TTS)  │
+│  - Providers: ElevenLabs, Azure, Google      │
 │  - SttTee: dual-provider fan-out             │
 │  - Audio: G.711 μ-law codec + mixer          │
 ├──────────────────────────────────────────────┤
@@ -126,14 +126,85 @@ from voice_runtime.stt import create_stt, get_stt_class
 from voice_runtime.tts import create_tts
 from voice_runtime.transport import create_transport
 
-stt = create_stt(provider="elevenlabs")     # or "azure"
-tts = create_tts(provider="elevenlabs")     # or "azure"
+stt = create_stt(provider="elevenlabs")     # or "azure", "google"
+tts = create_tts(provider="elevenlabs")     # or "azure", "google"
 transport = create_transport(provider="twilio")
 
 # get_stt_class returns the class without instantiating (for factory arguments)
 SttClass = get_stt_class(provider="elevenlabs")
 session.stt_factory = lambda: SttClass(language_code="en")
 ```
+
+## Google Chirp 3 STT and TTS (0.5.0, VR-013)
+
+Install the optional extra: `pip install "voice-runtime[google]"`. Without it,
+nothing Google is imported and the other providers behave exactly as before.
+
+**Authentication.** Application Default Credentials (ADC) only: workload
+identity in pods, `gcloud auth application-default login` locally. The
+project is also sent as the quota project, which user credentials require.
+No key is read, stored or logged by the providers.
+
+**Configuration.** An explicit non-`None` constructor argument wins over the
+environment, and the environment wins over the default.
+
+| Argument | Environment variable | Default |
+|---|---|---|
+| `project` | first non-empty of `GOOGLE_SPEECH_PROJECT`, `GOOGLE_CLOUD_PROJECT` | none: `ValueError` at STT `start()` / TTS `speak()` |
+| `location` | `GOOGLE_SPEECH_LOCATION` | `eu` (`eu-speech.googleapis.com`, `eu-texttospeech.googleapis.com`) |
+| `model` (STT) | `GOOGLE_STT_MODEL` | `chirp_3` |
+| `language_code` (STT) | `GOOGLE_STT_LANGUAGE` | `fi-FI` |
+| `phrase_hints` (STT) | `GOOGLE_STT_PHRASES` (comma-separated) | none; an explicit `[]` disables hints |
+| `endpointing` (STT) | `GOOGLE_STT_ENDPOINTING` | `supershort` (or `short`, `standard`) |
+| `voice_name` (TTS) | `GOOGLE_TTS_VOICE` | `fi-FI-Chirp3-HD-Charon` |
+
+An explicit `project=""` raises `ValueError`. TTS supports **Chirp 3 HD
+voices only** (streaming synthesis); the language is taken from the voice name.
+
+**Interface conformance only.** The providers implement `SttProvider` and
+`TtsProvider`, but the callback timing differs from Azure: Chirp 3 sends no
+interim results, so `on_recognizing` fires once per speech segment (with `""`
+at speech start), not repeatedly while the caller talks. Consumers whose
+silence or liveness timers rely on frequent `recognizing` events must check
+this before switching.
+
+**Commit log line.** `Google STT committed lang=<code> commit_lag_ms=<int>
+chars=<int>`. `commit_lag_ms` is the time from the end of speech detected by
+Google to the final transcript, or `-1` when no end-of-speech event preceded
+it. The transcript text is never logged.
+
+**Pacing and stream limits.** Audio is sent at most at 1x real time, in
+100 ms requests. Google closes a streaming connection after 5 minutes, so
+the STT replaces it: at the first final transcript after 270 s (ordinary
+swap), or forcibly at 290 s if the caller is still talking. An ordinary swap
+can split the utterance in flight across the old and the new stream, so one
+word may arrive as two pieces in separate final transcripts (live probe:
+`kohta norsu` → `kohtan` + `orsu`). A
+forced swap at 290 s may lose the speech in flight, including words spoken
+before the cut; consumers whose sessions can run past 290 s with continuous
+speech must accept this. Audio queued while a stream is replaced or
+reconnected (up to about 7 s of backoff plus a 5 s drain) is sent at the same
+1x pace, so it remains as a lasting delay for the rest of the session.
+Retryable errors reconnect after 1, 2 and 4 s; after three failed
+replacements, or on an authorisation or argument error, `on_error` fires
+once and the session ends.
+
+**TTS cancellation.** When `stop_event` is set or the call disconnects,
+`speak()` returns within 1 s with `interrupted` or `call_disconnected`. If
+the SDK read cannot be ended within that time, `speak()` instead fires
+`on_error("google_tts_worker_not_terminated")` once and returns
+`{"last_spoken": text, "error": "google_tts_worker_not_terminated"}`; the
+next `speak()` uses a fresh client.
+
+**Live probe.** `scripts/probe_vr013_google_session.py --project <p>` feeds
+300 s of synthetic `"Kohta <word>."` phrases through both providers and
+checks for an ordinary rotation and for runs of 3 or more consecutive
+unmatched words, compared case-, punctuation- and whitespace-insensitively;
+`--rescore <log>` re-scores an earlier log offline. The 3-word rule detects a
+pattern, not its cause: lost audio can remove one or two words, and
+misrecognition can spoil three or more. It does not gate inserted text,
+duplicates or overall quality. In the recorded run (VR-013 evidence) the last
+two phrases were not transcribed; the cause is unconfirmed.
 
 ## SttProvider Protocol
 

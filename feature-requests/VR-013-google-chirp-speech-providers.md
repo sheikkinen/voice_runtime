@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature. It adds providers behind the existing `SttProvider`/`TtsProvider` protocols. Existing providers, transports, the session and the protocols are unchanged.
-**Status:** Approved with revisions (round 1, 2026-11-16); R-1 to R-6 folded. Owner gates Q1–Q3 answered (2026-11-16). Offline implementation authorised. Amendment A-1 (simplified live probe) awaits round-2 judgement; offline work is unaffected.
+**Status:** Implemented, all ACs met (round-3 enforcement complete at `f79a446`, local, unpushed). AC-12 live run 1 (2026-11-16) returned FAIL (exit 1) under the original exact-sequence scorer; that outcome stands. AC-12 is a retrospective PASS under Amendment A-2 with the R-2 scorer at `1b6fe8b`, on the owner's evidence waiver for the processed historical word list (2026-11-16). Round 3: APPROVED WITH REVISIONS; owner promoted R-1, R-2, R-4, R-5 and replaced R-3; folded and enforced. Earlier: approved with revisions (round 1), R-1 to R-6 folded, Q1–Q3 answered, Amendment A-1 judged in round 2 with owner waiver. Push, tag and publish remain with the owner.
 **Requested:** 2026-11-16
 **Jira:** VBOT-212, under epic VBOT-210.
 **Parent:** [VR-012](VR-012-google-chirp-stt-tts-providers.md), split by its [round-1 judgement](VR-012-google-chirp-stt-tts-providers.judgement.md). This FR owns VR-012's D-2 and D-5 surfaces and its revisions R-2, R-3, R-4, R-6 and R-7. In the rest of this FR, R-1 to R-6 mean the revisions of this FR's own judgement. The cross-provider CLI is [VR-014](VR-014-speech-check-cli.md); this FR does not depend on it.
@@ -160,8 +160,9 @@ Each stream works like this:
 
 - **One worker per call.** A non-daemon worker thread reads the response stream and only puts messages on a `queue.Queue`: `("audio", bytes)`, `("eof", None)` or `("error", exc)`. It never touches the session. Only `speak` emits frames, taps and marks.
 - **Polling.** `speak` waits on the queue for at most 50 ms at a time and checks `stop_event` and `is_disconnected` between waits. A worker `error` message ends `speak` through the API-error row, so `speak` can never poll forever.
-- **One cancellation budget.** When the stop event or disconnect is seen, `speak` takes `deadline = time.monotonic() + 1.0` (measured from the poll that saw it, at most 50 ms after the event; the AC measures from the event itself). Within that budget it calls the streaming call's `cancel()` and joins the worker with the time remaining. The budget is shared, not added per step.
-- **No escape.** Every exit after the worker starts (normal completion, interruption, disconnect, API error) cancels or finishes the call and joins the worker. If the worker is still alive when the budget ends, that is a defect a test must catch; there is no daemon thread, detached work or silent join timeout. A caller-requested cancellation surfaces as `interrupted` or `call_disconnected`, never as a Google API error.
+- **One cancellation budget (round 3, R-4).** The total from the stop event or disconnect to the return of `speak` is at most 1 s. Polling takes at most 50 ms of it. The poll that sees the event takes `deadline = time.monotonic() + 0.90` (within the judged ≤950 ms allowance; the remaining 50 ms is scheduling margin so the 1 s total holds under test), and the 0.90 s covers both the streaming call's `cancel()` (including closing the client transport) and joining the worker with the time remaining. The budget is shared, not added per step, and starts at detection, not after the polling loop returns.
+- **No escape.** Every exit after the worker starts (normal completion, interruption, disconnect, API error) cancels or finishes the call and joins the worker. A caller-requested cancellation surfaces as `interrupted` or `call_disconnected`, never as a Google API error.
+- **Worker not terminated = explicit failure (round 3, R-4).** If the worker is still alive when the budget ends, `speak` calls `on_error("google_tts_worker_not_terminated")` once and returns `{"last_spoken": text, "error": "google_tts_worker_not_terminated"}`, never an `interrupted`, `call_disconnected` or plain result. The cached client is dropped so the next `speak` starts fresh. There is no daemon thread and no detached work; a log line alone does not count as cleanup.
 - **Raw bytes kept as-is.** Nothing is sniffed or stripped. Chunk bytes are passed through unchanged; there is no fallback to non-streaming synthesis.
 - Mark-wait behaviour and the public protocol are unchanged; session-level mark cancellation is out of scope.
 
@@ -175,11 +176,18 @@ Each stream works like this:
 ### 4. Probe scripts (D-4), outside the package
 
 - `scripts/probe_vr013_sdk_surface.py`: the research §7.1 probe, extended to every SDK name the providers use. It prints versions and exits non-zero if a name is missing.
-- `scripts/probe_vr013_google_session.py` (R-3, simplified by Amendment A-1) drives the **real** `GooglePersistentStt` (async client) and `GoogleTTS`. Synthetic Finnish text only, ADC with an explicit `--project`. It proves one thing live: an ordinary swap keeps a long session transcribing without loss. The forced swap is proved offline only (AC-06).
+- `scripts/probe_vr013_google_session.py` (R-3, simplified by Amendment A-1) drives the **real** `GooglePersistentStt` (async client) and `GoogleTTS`. Synthetic Finnish text only, ADC with an explicit `--project`. It checks one thing live: a long session keeps transcribing across an ordinary swap, with no run of 3 or more unmatched target words (round 3: a heuristic, see the limits below). The forced swap is proved offline only (AC-06).
   - **Capture session.** A probe-local subclass of `VoiceSession` overrides `put_outbound_sync` to append bytes to a buffer exactly once, and has no event loop, so `send_mark_and_wait` is a no-op. (`probe_vr009_lid.py` calls the Azure SDK directly and is not a model for this.) The probe asserts each capture is non-empty and a whole number of 160-byte frames before feeding STT.
   - **Phrases.** Each phrase is `"Kohta <word>."` followed by 1.5 s of silence, where `<word>` comes from a fixed list of distinct Finnish words (no numbers, so no number normalisation), never reused within a run.
   - **Run.** One mode only. It feeds 300 s of audio at 20 ms per frame, has an overall timeout of 360 s, and bounds cleanup (`stop()`, then exit) to 15 s.
-  - **Pass.** A rotate line with `forced=false` appears after 270 s, and every phrase word is committed once, in order, with nothing missing or duplicated. A missing rotation, a provider error, a timeout or an empty capture is a failure.
+  - **Pass (A-2 as folded in round 3).** No provider error, no timeout and no empty capture; exactly one rotate line with `forced=false` whose stream age (time since that stream opened) is at least 270 s, and no forced rotation; no run of 3 or more consecutive unmatched target words under the scorer below. The matched-word share, inserted text and duplicates are reported, not gated.
+  - **Scorer (R-2).** A pure function in the probe, `score(phrases, committed_texts)`:
+    1. *Normalise.* Unicode `casefold()`, then keep only characters for which `str.isalnum()` is true (Finnish `ä`, `ö`, `å` are kept; whitespace and punctuation are removed). The reference keeps a map from each normalised character to its target-word index; carrier characters map to "carrier".
+    2. *Reference.* Each phrase contributes its spoken carrier `Kohta` and its target word. Only target words count in the denominator. Recognised text is used as committed, with no prefix stripped.
+    3. *Align (as implemented; deviation from the round-3 text, see Decisions and deviations).* `align()`: a maximum-weight two-state character alignment of the two normalised strings: a matched target character weighs 2, a matched carrier character 1, and each match that continues a run of matches adds 1; ties break by a fixed trace-back order, so the result is deterministic for the same inputs. A target word is matched when every one of its characters is aligned. This makes a joined word (`kohtametsä`), a shifted boundary (`kohtan orsu`) and a word split across two commits matches; extra characters directly after a matched target (`kilpikonnat`) do not unmatch it.
+    4. *Report.* Per-target matched flag; matched count and share; the longest run of consecutive unmatched targets in target order, including leading and trailing runs; inserted text (hypothesis characters outside the alignment, grouped into contiguous spans); duplicated targets (a target whose normalised form occurs more than once, non-overlapping, in the normalised hypothesis; report only, so false hits from substrings are acceptable).
+    5. *Timing.* The probe records no per-phrase or per-commit timestamps, so the ±5 s rotation-boundary view is reported as "unavailable" rather than inferred from word order.
+  - **Limits of the 3-word rule.** It detects a pattern of consecutive unmatched words, not its cause: lost audio can remove one or two words, and misrecognition can spoil three or more. It does not gate inserted text, duplicates or overall quality. Natural-speech quality is a csap-black-box end-to-end follow-up, outside VR-013.
   - **Output.** Versions, git SHA and the exact command; the stream-open and rotation times; the expected and committed word sequences with any missing or duplicated words; errors; and the TTS time to first chunk, measured at the first non-empty response from the SDK.
   - Example: `python scripts/probe_vr013_google_session.py --project scp-tenant-csap-test > tmp/vr013-live.log 2>&1`.
 
@@ -205,14 +213,14 @@ There is no new callback and no synthetic periodic `recognizing`.
 
 **Why.** R-3 requires an amended, judged probe plan when the forced path is not exercised live. The first consumer ends calls at 300 s, so loss after 290 s has no effect on it (Q2 answer).
 
-## Frozen scope (judgement round 1)
+## Frozen scope (judgement round 1; D-1 to D-4 amended in round 3)
 
 | Deliverable | Surface |
 |---|---|
-| D-1 | This FR, its implementation and evidence record, and directly cited sanitised research updates. |
-| D-2 | `voice_runtime/providers/google_stt.py` and `google_tts.py`; the Google branches and docstrings in `voice_runtime/stt.py` and `tts.py`. |
-| D-3 | `tests/test_vr013_google_stt.py`, `tests/test_vr013_google_tts.py`, the AC-02 subprocess witness, and the directly needed factory and NC-165 conformance cases. |
-| D-4 | `scripts/probe_vr013_sdk_surface.py` and `scripts/probe_vr013_google_session.py`. No shipped diagnostic CLI. |
+| D-1 | This FR, its implementation and evidence record, directly cited sanitised research updates, and the round-3 evidence files `feature-requests/evidence/VR-013-ac12-run1.md` and `feature-requests/evidence/VR-013-ac10-ac11.md`. |
+| D-2 | `voice_runtime/providers/google_stt.py` and `google_tts.py`, plus the private `voice_runtime/providers/_google_config.py` (an extraction of the configuration and request builder, not a shared framework); the Google branches and docstrings in `voice_runtime/stt.py` and `tts.py`. Round 3 authorises one production correction: the R-4 Google TTS cancellation and cleanup seam. |
+| D-3 | `tests/test_vr013_google_stt.py`, `tests/test_vr013_google_tts.py`, the AC-02 subprocess witness, the directly needed factory and NC-165 conformance cases, the `req` marker registration in `tests/conftest.py`, and the synthetic probe-scorer tests `tests/test_vr013_probe_scorer.py`. |
+| D-4 | `scripts/probe_vr013_sdk_surface.py` and `scripts/probe_vr013_google_session.py` (round 3: the R-2 scorer and an offline `--rescore` mode). No shipped diagnostic CLI. |
 | D-5 | The `pyproject.toml` Google extra and next-minor version; the related `README.md`, `.env.example` and `CHANGELOG.md` updates. |
 | D-6 | Only the Google-extra addition to the test-job install line in `.github/workflows/publish.yml`, after Q3. |
 
@@ -222,35 +230,36 @@ Anything outside this table, including VR-014, CSAP or black-box edits, CI beyon
 
 Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network request and use no ADC.
 
-- [ ] **AC-01 (behavioural RED).** A test-only commit adds `tests/test_vr013_google_stt.py` and `tests/test_vr013_google_tts.py`, run with the exact SDK floors installed, before any GREEN commit.
+- [x] **AC-01 (behavioural RED).** A test-only commit adds `tests/test_vr013_google_stt.py` and `tests/test_vr013_google_tts.py`, run with the exact SDK floors installed, before any GREEN commit.
   - Tests reach the providers only through the existing factories (`get_stt_class`, `create_stt`, `create_tts`) and never import `voice_runtime.providers.google_*` at module level.
   - In RED, the only allowed failures are the factories' existing `ValueError("Unknown … provider: google")` and assertion failures. A collection, fixture or dependency error makes the RED invalid.
   - Every new or changed VR-013 test carries `@pytest.mark.req("VR-013")`.
+  - (round 3) The R-2 scorer and the R-4 cancellation correction each get a focused failing synthetic witness, committed before their fix.
   - The SDK client classes are faked; requests, responses and enums are the real SDK message types.
-- [ ] **AC-02 (optional SDK, R-6).**
+- [x] **AC-02 (optional SDK, R-6).**
   - SDK-dependent test modules start with `pytest.importorskip("google.cloud.speech_v2", reason="optional google extra not installed")` (and the matching TTS module). This is the only allowed skip.
   - A lazy-import witness runs a **fresh subprocess** with a controlled environment and no network: it imports `voice_runtime`, `voice_runtime.stt` and `voice_runtime.tts`, creates Azure STT and Azure TTS through the factories, and asserts that no `google.cloud` module is in `sys.modules`. It runs, and passes, both with and without the Google extra installed.
-- [ ] **AC-03 (STT config, R-4).**
+- [x] **AC-03 (STT config, R-4).**
   - The first request of the initial stream **and of every replacement stream** contains: the recognizer path, `MULAW`/8000/1 decoding, the model, `language_codes=["fi-FI"]`, `interim_results=True`, `enable_voice_activity_events=True` and the mapped endpointing enum.
   - Adaptation appears only with hints; `["Terveystalo"]` produces exactly that phrase.
   - Each of the three endpointing values maps to its enum; any other value → `ValueError` in the constructor.
   - Endpoint `eu-speech.googleapis.com`, quota project equal to the project.
   - Precedence: an explicit argument beats the environment; `GOOGLE_SPEECH_PROJECT` beats `GOOGLE_CLOUD_PROJECT`; an empty `GOOGLE_SPEECH_PROJECT` falls through to `GOOGLE_CLOUD_PROJECT`; explicit `project=""` → `ValueError`; no project → `ValueError` at `start()` with no SDK request.
   - Hints: `GOOGLE_STT_PHRASES=" a, ,b "` → `["a", "b"]`; explicit `[]` disables adaptation even when the variable is set; a non-string entry or a bare `str` → `ValueError`.
-- [ ] **AC-04 (STT audio and pacing, R-1).** With a fake monotonic clock, assert payloads **and** send timestamps:
+- [x] **AC-04 (STT audio and pacing, R-1).** With a fake monotonic clock, assert payloads **and** send timestamps:
   - 25 normally arriving frames → five ordered 800-byte requests at least 100 ms apart.
   - While speaking, the bytes are `0xFF` of the same length.
   - Three frames then the sentinel → one 480-byte request.
   - A preloaded 40-frame backlog → eight 800-byte requests at least 100 ms apart, never faster.
   - Delayed scheduling: the scheduler is held back 500 ms; the next requests are still at least 100 ms apart from each actual previous send (no burst).
   - After a reconnect and after a rotation, the retained audio is sent at the same 1× pace.
-- [ ] **AC-05 (STT callbacks and lag).**
+- [x] **AC-05 (STT callbacks and lag).**
   - Final `" Hei."` → `on_committed("Hei.")` exactly once; a whitespace-only final → no call.
   - An interim result → `on_recognizing(text)`; BEGIN → `on_recognizing("")`.
   - Speaking and echo-window discards work as in Azure.
   - Log line format: exact lag after END, `-1` without END. An END followed by an empty final, then a later final with no new END, logs `-1`. An END before a rotation, followed by a final on the new stream, logs `-1`.
   - The transcript text never appears in a log record.
-- [ ] **AC-06 (rotation and lifecycle).** With a fake clock and fake streams, assert the actual stream sequence and the bytes kept:
+- [x] **AC-06 (rotation and lifecycle).** With a fake clock and fake streams, assert the actual stream sequence and the bytes kept:
   - ordinary rotation at the first final after 270 s (`forced=false`);
   - forced rotation at 290 s with a **silent server** (no responses, no frames) (`forced=true`);
   - a blocked old-stream drain is cancelled after 5 s;
@@ -260,34 +269,37 @@ Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network 
   - normal end of input: the short batch is sent, responses are drained for at most 5 s, a stalled call is cancelled, and the provider exits with no reconnect and no `on_error`;
   - `stop()` during the drain, the opening and the backoff each leave no owned task pending and open no further stream; the client transport is closed;
   - `on_error` is never called by a rotation.
-- [ ] **AC-07 (retry policy, R-2).**
+- [x] **AC-07 (retry policy, R-2).**
   - Each retryable class, and unexpected EOF, at open and while reading → reconnect with the same config request.
   - Exhaustion sequence: initial failure, replacements 1, 2 and 3 fail → exactly 4 opens, backoff 1, 2 and 4 s, then exactly one `on_error("reconnect_exhausted_<Name>")`; no fifth open. For unexpected EOF the reason is `reconnect_exhausted_UnexpectedEOF`.
   - Reset by response: fail, replacement delivers a response, fail ×4 → `on_error` only after the last, and the second series starts its backoff at 1 s.
   - Reset by time: the same sequence, with the replacement running 5 s without error and without responses.
   - Each terminal class, at open and while reading → one `on_error("google_stt_<snake_name>")`, no reconnect.
   - Normal EOF after the sentinel and a successful rotation produce no error and no reconnect.
-- [ ] **AC-08 (TTS, R-4, R-5).**
+- [x] **AC-08 (TTS, R-4, R-5; reopened in round 3 by R-4, met at `7a180fc`).**
   - With a fake client yielding raw chunks of 333, 160 and 7 bytes, including `RIFF` and `0xFF` byte values inside the payload: the frames concatenate to the input with only end padding; the config request is as in §2; the mark is sent once.
   - Configuration: endpoint `eu-texttospeech.googleapis.com`, quota project, default voice `fi-FI-Chirp3-HD-Charon` with language `fi-FI`, explicit-over-environment precedence; a missing project → `ValueError` with no SDK request, after the three early returns still return their results without a request.
   - Every other row of the §2 table has its own test, including `stop_event=None`, mark timeout and disconnect after the mark wait.
   - Cancellation, with a fake whose next read **blocks until cancelled**: (a) stop set and (b) disconnect → `speak` returns within 1 s of the event; (c) the worker raises a Google API error → error result and one `on_error`. In each case, and after a normal completion, the worker thread has ended (`is_alive()` false) and no frame, tap or mark appears after return. (a) and (b) call no `on_error`.
-- [ ] **AC-09 (factories).**
+  - **Worst case (round 3, R-4).** For both stop and disconnect: `cancel()` itself is slow and the worker leaves its read only after a further delay, together just inside the 0.90 s budget, with the event arriving at an arbitrary point in the 50 ms poll → `speak` returns within 1 s of the event with the ordinary `interrupted` / `call_disconnected` result and a terminated worker.
+  - **Non-termination (round 3, R-4).** For both stop and disconnect: a worker that does not leave its read within the budget → `speak` returns within 1 s of the event with `{"last_spoken": text, "error": "google_tts_worker_not_terminated"}` and exactly one `on_error("google_tts_worker_not_terminated")`; no frame, tap or mark after return.
+- [x] **AC-09 (factories).**
   - `get_stt_class("google")`, `create_stt("google", project="p")` and `create_tts("google", project="p")` return the new types.
   - The NC-165 protocol-conformance tests include the Google cases under the AC-02 skip policy; existing provider cases stay active with unchanged assertions.
-- [ ] **AC-10 (Python and SDK matrix, R-6).**
+- [x] **AC-10 (Python and SDK matrix, R-6).**
   - Fresh venvs on **Python 3.11 and 3.12** with `.[dev,azure,elevenlabs]` plus exactly `google-cloud-speech==2.41.0` and `google-cloud-texttospeech==2.38.0`: `scripts/probe_vr013_sdk_surface.py` passes and the **full offline suite** passes with no optional-Google skip.
   - A second fresh venv per version with `.[dev,azure,elevenlabs]` only (Google never installed): the full suite passes; only the new SDK-dependent cases skip, and the AC-02 subprocess witness and all existing-provider tests run.
   - The record holds the install and test commands, interpreter versions, resolved SDK versions (`pip freeze` excerpt), exit codes and summaries.
   - A lower floor is allowed only if this same evidence passes at that exact version.
-- [ ] **AC-11 (artifacts).**
+- [x] **AC-11 (artifacts).**
   - `ruff check voice_runtime/` (release checklist) passes.
   - `python -m build` and `twine check` pass.
   - A clean non-editable wheel install with `[google]`, run outside the checkout, creates both providers through the public factories without a live request.
-- [ ] **AC-12 (live, Q1 approved; R-3 as amended by A-1).** Run `scripts/probe_vr013_google_session.py` once against `scp-tenant-csap-test` and record the probe output listed in §4.
-  - The following block release and are recorded as failure evidence: a 403, 404 or region error; any provider error or timeout; no ordinary rotation observed; any missing or duplicated phrase word.
+- [x] **AC-12 (live, Q1 approved; R-3 as amended by A-1 and A-2, folded in round 3).** Run `scripts/probe_vr013_google_session.py` once against `scp-tenant-csap-test` and record the probe output listed in §4.
+  - Pass rule and scorer: §4. A 403, 404 or region error, any provider error or timeout, no ordinary rotation with stream age ≥270 s, a forced rotation, or a run of 3 or more unmatched target words is failure evidence and blocks release.
+  - Run 1 keeps its original result: **FAIL, exit 1, under the original exact-sequence scorer**. AC-12 may be ticked from run 1 (owner answer 3, no re-run) only as a **retrospective PASS under A-2**, naming the scorer (probe path and commit SHA; as implemented, `align()` at `1b6fe8b`), and only from the committed evidence file `feature-requests/evidence/VR-013-ac12-run1.md` holding the full expected and committed lists, the original command, SHA, versions, stream and rotation records, errors, the rescore command and its full output.
   - Forced-rotation loss is not measured live (Q2).
-- [ ] **AC-13 (docs).**
+- [x] **AC-13 (docs; reopened in round 3 by R-1, met at `f79a446`).**
   - `README.md` gains a Google STT and TTS section covering:
     - the extra, ADC and quota project (workload identity in pods);
     - the configuration table and precedence rules;
@@ -295,10 +307,176 @@ Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network 
     - **interface conformance only**: `on_recognizing` cadence differs from Azure (fact 4);
     - the meaning of `commit_lag_ms`;
     - 1× pacing, so a reconnect or rotation leaves a lasting delay;
-    - the rotation limits, and that a forced swap at 290 s may lose the speech in flight; consumers whose sessions can run past 290 s with continuous speech must accept this.
+    - the rotation limits, and that a forced swap at 290 s may lose the speech in flight; consumers whose sessions can run past 290 s with continuous speech must accept this;
+    - (round 3) that an ordinary rotation can split the utterance in flight across the old and new stream, so one word may arrive as two transcript pieces in separate final transcripts.
+  - (round 3) The probe's run-1 note in `README.md` or the evidence file states the limits of the 3-word rule (§4) and that the cause of the two unmatched final words in run 1 is unconfirmed.
   - `.env.example` gains commented Google variables.
   - `CHANGELOG.md` records VR-013 under the actual next minor, and the version is bumped. D-6 changes only after Q3. Tagging and publishing need the owner's explicit "publish".
-- [ ] **AC-14 (record).** This FR records the folded revisions, RED and GREEN commits, decisions and deviations, the AC-10 and AC-11 evidence, the AC-12 output, and the owner answers to Q1–Q3. An unanswered or declined gate is recorded as blocked, not fulfilled.
+- [x] **AC-14 (record).** This FR records the folded revisions (rounds 1 and 3), RED and GREEN commits, decisions and deviations, the AC-10 and AC-11 evidence (copied into `feature-requests/evidence/VR-013-ac10-ac11.md`: commands, interpreter and SDK versions with a `pip freeze` excerpt, exit codes, summaries; temporary scripts are not proof), the AC-12 run-1 original FAIL and retrospective A-2 result, and the owner answers to Q1–Q3 and the A-2 questions. An unanswered or declined gate is recorded as blocked, not fulfilled.
+- [x] **AC-15 (scorer witnesses, round 3, R-2).** `tests/test_vr013_probe_scorer.py`, marked `@pytest.mark.req("VR-013")`, loads the actual probe scorer (no network, no SDK) and proves:
+  - a carrier joined to its target and a target split across two commits are matched;
+  - a genuine substitution stays unmatched;
+  - trailing inserted text is reported as inserted and does not unmatch the target;
+  - 2 consecutive unmatched targets give a longest run of 2 and 3 give 3, including when the run is at the end;
+  - a long input (≥98 phrases) with the repeated `Kohta` carrier scores every target matched, which would fail if the alignment discarded repeated characters.
+  - The offline rescore of run 1 prints per-word flags, inserted text, longest run and totals from the complete committed sequences.
+
+## Implementation record (2026-11-16)
+
+### Commits (branch `feat/vr-013-google-chirp-providers`, local, unpushed)
+
+| Commit | Content |
+|---|---|
+| `302977d` | Round-2 owner decision record (judgement file, Q2 waiver). |
+| `2d7e090` | RED: `tests/test_vr013_google_stt.py` (85), `tests/test_vr013_google_tts.py` (27), `tests/test_vr013_lazy_import.py`, Google cases in `tests/test_factories.py` and `tests/test_nc165_stt_protocol.py`, `req` marker registration in `tests/conftest.py`. Committed with `SKIP=pytest`. |
+| `3f14df3` | GREEN: `google_stt.py`, `google_tts.py`, factory branches, `pyproject.toml` 0.5.0 + `google` extra, README, CHANGELOG, `.env.example`, `publish.yml` (Q3), `scripts/probe_vr013_sdk_surface.py`. |
+| `f17b5f0` | Refactor to pass the size and CC gates; behaviour unchanged. |
+| `3152539` | `scripts/probe_vr013_google_session.py` (AC-12 probe). |
+
+### Offline evidence
+
+- **AC-01 RED validity.** `2d7e090` checked out in a temporary worktree, `pytest tests --no-cov`: 118 failed, 679 passed, 1 skipped, 0 errors. Failures: 81 `Unknown STT provider: google`, 27 `Unknown TTS provider: google`, 10 assertion mismatches (`pytest.raises(match=…)` on the factory error). No collection, fixture or dependency error.
+- **GREEN.** `pytest tests --no-cov` at `f17b5f0`: 797 passed, 1 skipped (ElevenLabs key-gated integration test). The five VR-013-related files ran 5 times in a row: 143 passed each time.
+- **AC-10** (`tmp/matrix.sh` at `3152539`, fresh `uv` venvs, `google-cloud-speech==2.41.0`, `google-cloud-texttospeech==2.38.0`, all install/probe/pytest rc=0):
+
+  | Interpreter | Google extra | SDK surface probe | `pytest tests` |
+  |---|---|---|---|
+  | 3.11.14 | yes | OK 46 names | 797 passed, 1 skipped |
+  | 3.11.14 | no | — | 679 passed, 9 skipped (8 `optional google extra not installed`, 1 ElevenLabs key) |
+  | 3.12.13 | yes | OK 46 names | 797 passed, 1 skipped |
+  | 3.12.13 | no | — | 679 passed, 9 skipped (as above) |
+
+- **AC-11** (`tmp/ac11.sh` at `3152539`): `ruff check voice_runtime/` passes; `python -m build` builds `voice_runtime-0.5.0` sdist and wheel; `twine check` PASSED for both; a clean non-editable install of the wheel with `[google]`, run from `/tmp` with an empty environment and a dead proxy, creates `GooglePersistentStt` and `GoogleTTS` via the factories (rc=0). The build prints a setuptools deprecation warning about the `project.license` TOML table; it is not caused by this change and is not addressed.
+- **Gates.** `pre-commit` (ruff, file-size ≤450, radon CC <21, pytest) passes on `f17b5f0` and `3152539`: `google_stt.py` 450 lines, `GoogleTTS.speak` CC 17, highest STT method CC 11.
+
+### AC-12 live run 1: FAIL, for owner manual review
+
+Command (ADC, synthetic Finnish only): `.venv/bin/python scripts/probe_vr013_google_session.py --project scp-tenant-csap-test > tmp/vr013-live.log 2>&1`, exit 1.
+
+Probe output (verbatim, abridged lists):
+
+```
+git: 3152539fc44dc4235a6e4a4d42ea93697b6a7749 python: 3.14.7
+voice-runtime 0.1.12   (stale editable-install metadata; code imported from the checkout at 3152539)
+google-cloud-speech 2.41.0 / google-cloud-texttospeech 2.38.0 / google-api-core 2.44.0
+tts: phrases=98 synth_s=26.7 ttfc_ms first=407 median=165 max=407
+feed_start_s=0.77
+stream_open_s=1.03,274.42
+rotate at_s=274.42 since_first_open_s=273.39: Google STT stream rotate age_s=273 forced=false drained=true
+expected (98) / committed (101)
+errors: []
+RESULT FAIL: committed words differ from expected sequence
+```
+
+What passed: no 403/404/region error, no provider error, no timeout, no forced rotation. One ordinary rotation (`forced=false`, `drained=true`) at 273.4 s after the first stream open.
+
+What failed: the strict word-sequence rule (AC-12, "any missing or duplicated phrase word"). Aligning expected against committed words (difflib, after removing a leading `kohta`/`ohta` from committed tokens) shows three distinct causes:
+
+1. **Probe scoring artefact (about 25 words).** Chirp often joins the carrier word to the target word (`kohtametsä`, `kohtajärvi`, …). The probe only discards a standalone `kohta` token, so each joined word counts as both missing and unexpected. With the prefix removed, these words all match, in order.
+2. **Recognition errors (substitutions, not loss).** `sade`→`fari`; `orava siili`→`seuraava fiili`; `varis`→`lais`; `delfiini`→`corpo dela filme`; `kilpikonna`→`kilpikonnat`; one inserted `kohpa`, one inserted `pultti`. The audio for each phrase was transcribed; the words are wrong.
+3. **Two findings about stream timing:**
+   - **End of run.** The last two phrases (`pallo`, `nukke`, fed in the final seconds before 300 s) were never committed. After the rotation the provider runs behind the feed at 1× pacing (D-1, up to the 5 s drain plus the open), and the probe waits only `TAIL_WAIT_S = 6.0` after the end-of-input sentinel before `stop()`. That is one possible cause; **the cause is unconfirmed** (round 3) and no re-run is planned.
+   - **Phrase split at the rotation.** `Kohta norsu`, the phrase in flight when the ordinary rotation fired, was committed as `kohtan` + `orsu`: part of the utterance went to the old stream and the rest to the new one. After whitespace normalisation the boundary word reconstructs. This is consistent with D-2 (drain before open, no overlap). The README does not currently mention that an ordinary rotation can split an utterance.
+
+Owner decision needed (not taken by the implementer):
+
+- whether AC-12's exact-sequence rule stands, or is amended (e.g. tolerate the carrier prefix and report substitutions while failing only on errors, no rotation, or a run of missing words near the rotation); an AC change needs an amendment and re-judge;
+- whether to fix the probe tail wait and the `kohta` prefix handling (D-4 scope) and re-run;
+- whether the split-at-rotation finding goes into the README and Open risks.
+
+Raw output: `tmp/vr013-live.log` (not committed).
+
+**Owner manual review (2026-11-16, Sami Heikkinen):** "chirp stt seems to add extra kohta- prefix on multiple cases. otherwise the wordlist seems okayish. recommendation: test with real paragraphs, not just a wordlist to see the effect more natural setting."
+
+- Implementer note: `Kohta` is spoken in every probe phrase (`"Kohta <word>."`). Chirp does not invent it; it often writes it joined to the next word (`kohtametsä`). A carrier word before an isolated noun is an unnatural input, which supports the owner's recommendation.
+- Owner follow-up (2026-11-16): "if kohta was in the real audio, then this is just punctuation issue, i.e. minor". The joined carrier word is classified as a **minor word-boundary/punctuation issue**, not as missing or invented content.
+- Run 1 therefore stays recorded as FAIL against the current rule. The recommended next step is Amendment A-2 below, which needs judging before the probe changes.
+
+### Amendment A-2 — 2026-11-16 (owner-decided; judged in round 3, folded into §4 and AC-12 to AC-15)
+
+**Change.** AC-12 scoring and evidence, per the owner answers below. The word-list input stays. Natural-speech testing (the owner's paragraph recommendation) moves to a follow-up csap-black-box end-to-end run, outside VR-013.
+- **Scoring (owner rule, 2026-11-16).** "missing punctuation interpreted as full success. next phase llm would not mind the whitespace."
+  - Compare case-, punctuation- and **whitespace-insensitively**. Remove all spaces and punctuation from both sides, align the character streams, and count a reference word as matched when all of its characters align. A joined word (`kohtametsä`) or a shifted word boundary (`kohtan orsu` for `kohta norsu`) is a match.
+  - Report the matched-word share, each unmatched reference word, the inserted text, and the alignment within ±5 s of the rotation.
+- **Pass.**
+  - No provider error or timeout.
+  - One ordinary rotation (`forced=false`) after 270 s and no forced rotation.
+  - No run of 3 or more consecutive unmatched reference words anywhere, which would indicate lost audio rather than misrecognition.
+  - The matched-word share is reported, not gated (open question below).
+- **Tail wait.** Not changed (round 3: R-3 replaced by the owner). The cause of the two unmatched final words in run 1 stays unconfirmed.
+- **Docs.** README and Open risks add that an ordinary rotation can split the utterance in flight across two streams (run 1: `norsu` → `kohtan` + `orsu`, which reconstructs after whitespace normalisation). Whether a split is harmless downstream is not shown here.
+
+**Run 1 re-scored under the owner rule (preliminary, implementer's ad-hoc difflib alignment from `tmp/vr013-live.log`; superseded by the R-2 scorer and its committed evidence; no new live call).**
+
+- **Matched: 91 of 98 reference words (92.9 %).** All 20 words joined to `kohta` (`kohtametsä`, …) match, and the rotation-boundary word `norsu` (`kohtan orsu`) reconstructs after whitespace normalisation.
+- **Misrecognised (5):** `sade`→`ohtafari`, `orava siili`→`seuraava fiili`, `varis`→`lais`, `delfiini`→`corpo dela filme`.
+- **Inserted text:** `kohpa`, `pultti`, and a trailing `t` on `kilpikonnat`. The stem matches, so `kilpikonna` counts as matched.
+- **Unmatched at the end (2):** `pallo`, `nukke`. Cause unconfirmed.
+- **Longest unmatched run:** 2 (`orava siili`, and the final `pallo nukke`).
+- **Preliminary reading under the A-2 rule:** no error, ordinary rotation at 273.4 s after the first open, longest unmatched run 2. Run 1's original FAIL stays on record; AC-12 waits for the R-2 scorer's committed rescore.
+
+**Owner answers (2026-11-16, Sami Heikkinen).**
+
+1. The matched-word share is **reported only**, with no release threshold. Natural-speech quality is covered by a follow-up csap-black-box end-to-end run.
+2. A run of 3 or more consecutive unmatched reference words is the loss signal: **yes**. Rationale: a misrecognition replaces one or two words, while dropped audio removes a contiguous stretch. The run length is the cheapest signal that tells them apart without mapping words to audio timestamps.
+3. AC-12 is **ticked from the re-scored run 1**; no paragraph re-run.
+
+**Resulting AC-12 rule.**
+
+- Pass: as folded into §4 (round 3).
+- The matched-word share is reported, not gated.
+- Probe (D-4): add the §4 scorer to `scripts/probe_vr013_google_session.py` with an offline `--rescore` mode, so the evidence can be recomputed. No tail-wait change and no new live run.
+
+**Unchanged.** The rotation design (D-2) and AC-01 to AC-07, AC-09 to AC-11. Changed by round 3: the TTS cancellation seam (R-4, AC-08), AC-12 to AC-14 and the new AC-15.
+
+### Decisions and deviations made during enforcement
+
+- **Deviation from D-2 file list.** I added a new private module, `voice_runtime/providers/_google_config.py`, which is not in the D-2 file list. It holds the shared project/env resolution, defaults, hint parsing, endpointing validation and the first-request builder. It was needed to bring `google_stt.py` under the 450-line gate (553 lines before) and it removes logic duplicated between the providers. `_build_config_request()` is still the single builder and delegates to `SttSettings.config_request()`. The module imports the Speech SDK only inside that method.
+- **Test registration.** The `req` marker is registered in `tests/conftest.py`, because it was not registered before.
+- **`publish.yml`.** The approved diff omitted `-e`; the actual line is `pip install -e ".[dev,elevenlabs,azure,google]"`. The editable flag was already there and is unchanged.
+- **TTS behaviour:**
+  - The client is created lazily on the first `speak`.
+  - A cancel during a blocked first read closes the client transport and drops the cached client.
+  - Any worker exception counts as an API error result.
+  - Logs show the character count only.
+  - The queue polling loop is extracted to `_pump` to meet the CC gate.
+- **STT behaviour:**
+  - An unclassified exception is treated as terminal.
+  - After the input ends, a retryable error or EOF is only logged; a terminal error still fires its one callback.
+  - A retryable error during a rotation drain starts a new series at attempt 1.
+  - The rotate log line is written only after a successful rotation.
+  - Endpointing values must match exactly in lowercase.
+  - Interim results and BEGIN are ignored while speaking.
+  - The speaking mute is decided when a frame enters the carry buffer.
+- **Process gap.** `pre-commit` hooks are not installed in this repository (`.git/hooks` has no `pre-commit`). `2d7e090` and `3f14df3` were committed without the gates running; running them afterwards found the size and CC violations that `f17b5f0` fixes. From `f17b5f0` on, `pre-commit run --files …` was run manually before each commit.
+- **Not done, needs owner:** push, tag, publish (AC-13: "publish" needed).
+
+### Round-3 enforcement (2026-11-16)
+
+| Commit | Content |
+|---|---|
+| `c1205e3` | Round-3 judgement file; owner promotion of R-1, R-2, R-4, R-5 (R-3 replaced); fold into §2, §4, scope and AC-01, AC-08, AC-12 to AC-15. |
+| `b201762` | R-4 budget set to 0.90 s (see deviations). |
+| `c1e12e0` | R-4 RED (`SKIP=pytest`): slow `cancel()` plus slow worker exit, for stop and disconnect, must still return within 1 s; a worker that never leaves its read must be an explicit error. 2 assertion failures, no errors. |
+| `7a180fc` | R-4 GREEN: `_CANCEL_BUDGET_S = 0.90`, `_end_worker` (cancel unless EOF, join to the deadline taken at detection, drop the client if the worker is alive); `speak` returns `google_tts_worker_not_terminated` with one `on_error`. README "TTS cancellation" paragraph. |
+| `16a97c9` | R-2 RED (`SKIP=pytest`): `tests/test_vr013_probe_scorer.py`, 10 AC-15 witnesses. 10 assertion failures, no errors (the scorer existence check is inside each test, not a fixture). |
+| `1b6fe8b` | R-2 GREEN: `normalise`, `align`, `score`, `rescore`, `rotation_ages` and the `--rescore` CLI in `scripts/probe_vr013_google_session.py`; live output prints the raw final transcripts. |
+| `f79a446` | Evidence files, README rotation-split and live-probe notes, CHANGELOG 0.5.0 additions. |
+
+- **Evidence.**
+  - AC-10 and AC-11 re-run at `1b6fe8b`: [evidence/VR-013-ac10-ac11.md](evidence/VR-013-ac10-ac11.md). The matrix gives 811 passed and 1 skipped with Google, and 689 passed and 9 skipped without it, on 3.11.14 and 3.12.13. Build, twine and the wheel smoke test pass. The earlier `3152539` numbers above are superseded.
+  - AC-12: [evidence/VR-013-ac12-run1.md](evidence/VR-013-ac12-run1.md). The rescore matched 91 of 98 targets. The longest unmatched run is 2. The original FAIL stands.
+  - Full suite at `f79a446`: 811 passed, 1 skipped. The three VR-013 test files ran 5 times in a row: 126 passed each time.
+- **Owner evidence waiver (AC-12, R-2; 2026-11-16, Sami Heikkinen): accepted.**
+  - The run-1 `committed` line is the old probe's processed list. Standalone `kohta` tokens, punctuation and the boundaries between transcripts were removed, but every target-word letter was kept.
+  - The owner accepts this list as the historical sequence for the retrospective PASS.
+- **Deviation: scorer alignment.** The round-3 §4 text named `difflib.SequenceMatcher(autojunk=False)`. It was tried and rejected.
+  - Its greedy longest-block choice gave a target's characters to the neighbouring carrier `kohta`, which wrongly unmatched real hits.
+  - A plain weighted LCS also failed: tie-breaking split `metsä`.
+  - The implemented `align()` (§4 step 3) adds a run-continuation bonus that fixes both.
+  - The AC-15 tests and the run-1 rescore are the witnesses. The pass rule and the reported fields are unchanged.
+- **Deviation: cancellation budget.** 0.90 s instead of the 0.95 s allowance. This keeps 50 ms of scheduling margin under the strict "within 1 s" assertion.
+- **Gates.** `pre-commit run --files …` was run manually before every round-3 commit; the hooks are still not installed. `GoogleTTS.speak` CC is 16.
 
 ## Decisions
 
@@ -312,6 +490,7 @@ Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network 
    - **Answer (2026-11-16, Sami Heikkinen): yes.** AC-12 may run against `scp-tenant-csap-test`, synthetic Finnish text only.
 2. **Q2.** What measured maximum missing content or time interval at a forced rotation boundary is acceptable for this library release, and do the recorded AC-12 runs meet that bound? CSAP deployment stays separately gated; this does not authorise replay or a CSAP policy change. *(blocks release)*
    - **Answer (2026-11-16, Sami Heikkinen): implement a simple swap; no loss bound and no loss analysis.** The first consumer ends every call at 300 s: the CSAP supervisor sends `call_time_exceeded` at `VOICE_MAX_CALL_DURATION`, default 300 (CSAP `services/supervisor.py:112`), and the navigator then plays a fixed goodbye with no further listening (CSAP `config/voice_coordinator_navigator.yaml:139-143`, NC-364). Speech after 290 s is therefore lost anyway. Forced-swap loss is accepted, documented (AC-13) and not measured live. Applied as Amendment A-1.
+   - **Round-2 waiver (2026-11-16, Sami Heikkinen):** the owner explicitly accepts unmeasured forced-swap loss of an in-flight utterance, including content before the cut, for this release. The round-2 judge revisions were not promoted; see the judgement file.
 3. **Q3.** Do you approve the one-line `publish.yml` install change in §3, after reviewing its exact diff? *(blocks D-6)*
    - **Answer (2026-11-16, Sami Heikkinen): approved.** The diff is `pip install ".[dev,elevenlabs,azure]"` → `pip install ".[dev,elevenlabs,azure,google]"` in the test job, nothing else.
 
@@ -320,6 +499,8 @@ Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network 
 - **R1. Consumer timers.** CSAP resets its silence and liveness timers on `recognizing` (NC-203, NC-259). Chirp's once-per-segment signal could let a long unbroken utterance hit the timeout. This is out of scope here and blocks CSAP rollout until the CSAP FR decides.
 - **R2. Region policy.** `constraints/gcp.resourceLocations` blocked `eu` on 2026-10-29. If that returns, every call fails with a terminal `on_error`. Owned by VBOT-211.
 - **R3. Latency to `eu` from the CSAP pods.** Not measured here; the CSAP FR measures it.
+- **R4. Utterance split at an ordinary rotation (round 3).** The phrase in flight at a swap can arrive as two pieces in separate final transcripts (run 1: `kohtan` + `orsu`). A consumer that acts on each final transcript alone may see a broken word. Downstream impact is not measured here.
+- **R5. Loss signal is a heuristic (round 3).** The 3-word unmatched-run rule cannot tell lost audio from misrecognition by itself and does not gate insertions, duplicates or quality (§4). The cause of run 1's two unmatched final words is unconfirmed.
 
 ## Out of scope
 

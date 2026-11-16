@@ -33,6 +33,16 @@ class TestCreateTts:
         tts = create_tts(provider="azure", subscription_key="test")
         assert type(tts).__name__ == "AzureTTS"
 
+    @pytest.mark.req("VR-013")
+    def test_google_provider(self):
+        pytest.importorskip(
+            "google.cloud.texttospeech", reason="optional google extra not installed"
+        )
+        from voice_runtime.tts import create_tts
+
+        tts = create_tts(provider="google", project="p")
+        assert type(tts).__name__ == "GoogleTTS"
+
     def test_unknown_provider_raises(self):
         from voice_runtime.tts import create_tts
 
@@ -59,6 +69,25 @@ class TestCreateStt:
 
         stt = create_stt(provider="azure", subscription_key="test")
         assert type(stt).__name__ == "AzurePersistentStt"
+
+    @pytest.mark.req("VR-013")
+    def test_google_provider(self):
+        pytest.importorskip(
+            "google.cloud.speech_v2", reason="optional google extra not installed"
+        )
+        from voice_runtime.stt import create_stt
+
+        stt = create_stt(provider="google", project="p")
+        assert type(stt).__name__ == "GooglePersistentStt"
+
+    @pytest.mark.req("VR-013")
+    def test_get_stt_class_google(self):
+        pytest.importorskip(
+            "google.cloud.speech_v2", reason="optional google extra not installed"
+        )
+        from voice_runtime.stt import get_stt_class
+
+        assert get_stt_class("google").__name__ == "GooglePersistentStt"
 
     def test_unknown_provider_raises(self):
         from voice_runtime.stt import create_stt

@@ -29,3 +29,9 @@ requires_azure = pytest.mark.skipif(
     not AZURE_AVAILABLE,
     reason="azure extra not installed (pip install voice-runtime[azure])",
 )
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "req(id): links a test to the feature request that authorised it"
+    )
