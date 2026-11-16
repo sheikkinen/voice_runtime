@@ -1,6 +1,6 @@
 # VR-012 research: Google Chirp 3 speech-to-text and text-to-speech
 
-Evidence for [VR-012](../VR-012-google-chirp-stt-tts-providers.md). All probes ran from the owner's workstation against GCP project `scp-tenant-csap-test`, using the owner's gcloud user credentials and that project as the quota project. All audio was synthetic: Chirp or Azure text-to-speech output, or the `csap-black-box-tests` synthetic persona. No caller audio was used.
+Evidence for [VR-012](../VR-012-google-chirp-stt-tts-providers.md) (split) and its successors [VR-013](../VR-013-google-chirp-speech-providers.md) and [VR-014](../VR-014-speech-check-cli.md). All probes ran from the owner's workstation against GCP project `scp-tenant-csap-test`, using the owner's gcloud user credentials and that project as the quota project. All audio was synthetic: Chirp or Azure text-to-speech output, or the `csap-black-box-tests` synthetic persona. No caller audio was used.
 
 ## 1. Region: the `eu` multi-region is reachable (2026-11-13)
 
@@ -110,3 +110,64 @@ Sources: <https://docs.cloud.google.com/speech-to-text/docs/models/chirp-3>, <ht
 | CSAP NC-567 (Chirp 3 feasibility spike, `scripts/spike_chirp3_stt.py`) | Its `eu` block no longer holds (§1). Its 56-clip comparison against Azure is still the right *quality* gate, but that gate belongs to the CSAP consumer FR, not this library FR. |
 | voice_runtime NC-161/NC-258, VR-005, VR-009 (`AzurePersistentStt`) | Structural template: one recogniser builder shared by start and reconnect, backoff reconnect, owned tasks, echo discard, and a commit log line without text. |
 | `scripts/probe_vr009_lid.py` | Pattern for the command-line tester: 20 ms frames, trailing silence, a log-capture handler, and a version/SHA header. |
+
+## 7. Probe sources as run (judgement R-6)
+
+Both probes ran on 2026-11-16 in a throwaway venv: `python3 -m venv /tmp/gtts-probe && /tmp/gtts-probe/bin/pip install google-cloud-texttospeech google-cloud-speech`. That installed `google-cloud-speech==2.41.0` and `google-cloud-texttospeech==2.38.0` on Python 3.14. The venv was deleted afterwards. The CI floor (3.11, 3.12) was **not** covered; VR-013 AC-10 closes that gap.
+
+### 7.1 SDK surface probe (§3)
+
+```python
+import importlib.metadata as m
+from google.cloud import texttospeech as t
+from google.cloud.speech_v2.types import cloud_speech as c
+print("tts", m.version("google-cloud-texttospeech"), "speech", m.version("google-cloud-speech"))
+print("StreamingAudioConfig fields:", list(t.StreamingAudioConfig.meta.fields))
+print("AudioEncoding:", [e.name for e in t.AudioEncoding])
+print("StreamingRecognitionFeatures:", list(c.StreamingRecognitionFeatures.meta.fields))
+print("Endpointing:", [e.name for e in c.RecognitionFeatures.meta.fields and c.StreamingRecognitionFeatures.EndpointingSensitivity] if hasattr(c.StreamingRecognitionFeatures,"EndpointingSensitivity") else "n/a")
+print("SpeechEventType:", [e.name for e in c.StreamingRecognizeResponse.SpeechEventType])
+```
+
+### 7.2 Live streaming probe (§4)
+
+This was run with `PATH` including `/opt/homebrew/share/google-cloud-sdk/bin` and with gcloud user ADC. It uses the **synchronous** `SpeechClient`. VR-013's provider uses `SpeechAsyncClient`, so this is evidence about the service, not about the provider.
+
+```python
+import time, queue
+from google.api_core.client_options import ClientOptions
+from google.cloud import texttospeech as t
+from google.cloud.speech_v2 import SpeechClient
+from google.cloud.speech_v2.types import cloud_speech as c
+P="scp-tenant-csap-test"
+tts=t.TextToSpeechClient(client_options=ClientOptions(api_endpoint="eu-texttospeech.googleapis.com", quota_project_id=P))
+text="Hei. Haluaisin uusia reseptin. Lääke on ramipriili, viisi milligrammaa."
+def reqs():
+    yield t.StreamingSynthesizeRequest(streaming_config=t.StreamingSynthesizeConfig(
+        voice=t.VoiceSelectionParams(name="fi-FI-Chirp3-HD-Charon", language_code="fi-FI"),
+        streaming_audio_config=t.StreamingAudioConfig(audio_encoding=t.AudioEncoding.MULAW, sample_rate_hertz=8000)))
+    yield t.StreamingSynthesizeRequest(input=t.StreamingSynthesisInput(text=text))
+t0=time.time(); audio=b""; first=None; n=0
+for r in tts.streaming_synthesize(reqs()):
+    if first is None: first=time.time()-t0
+    audio+=r.audio_content; n+=1
+print(f"TTS stream MULAW8k: chunks={n} bytes={len(audio)} ({len(audio)/8000:.2f}s) first_chunk={first:.2f}s total={time.time()-t0:.2f}s head={audio[:4]!r}")
+stt=SpeechClient(client_options=ClientOptions(api_endpoint="eu-speech.googleapis.com", quota_project_id=P))
+cfg=c.StreamingRecognitionConfig(config=c.RecognitionConfig(
+    explicit_decoding_config=c.ExplicitDecodingConfig(encoding=c.ExplicitDecodingConfig.AudioEncoding.MULAW, sample_rate_hertz=8000, audio_channel_count=1),
+    model="chirp_3", language_codes=["fi-FI"]),
+    streaming_features=c.StreamingRecognitionFeatures(interim_results=True, enable_voice_activity_events=True,
+        endpointing_sensitivity=c.StreamingRecognitionFeatures.EndpointingSensitivity.ENDPOINTING_SENSITIVITY_SUPERSHORT))
+pcm=audio+b"\xff"*16000
+def sreqs():
+    yield c.StreamingRecognizeRequest(recognizer=f"projects/{P}/locations/eu/recognizers/_", streaming_config=cfg)
+    for i in range(0,len(pcm),800):
+        time.sleep(0.1); yield c.StreamingRecognizeRequest(audio=pcm[i:i+800])
+t0=time.time(); end_speech=len(audio)/8000
+for r in stt.streaming_recognize(requests=sreqs()):
+    el=time.time()-t0
+    if r.speech_event_type: print(f"  {el:5.2f}s event {c.StreamingRecognizeResponse.SpeechEventType(r.speech_event_type).name}")
+    for res in r.results:
+        print(f"  {el:5.2f}s final={res.is_final} {res.alternatives[0].transcript if res.alternatives else ''!r}")
+print(f"speech audio ends at {end_speech:.2f}s of stream")
+```

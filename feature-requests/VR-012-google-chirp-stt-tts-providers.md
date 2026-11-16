@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature. It adds providers behind the existing `SttProvider`/`TtsProvider` interfaces and adds a command-line tool. The Azure, ElevenLabs and mock providers are unchanged.
-**Status:** Proposed (draft, not judged).
+**Status:** Split 2026-11-16 (judgement round 1: SPLIT, accepted by the owner). Not implemented. Its scope continues in [VR-013](VR-013-google-chirp-speech-providers.md) (Google providers) and [VR-014](VR-014-speech-check-cli.md) (speech check CLI). The text below is the round-1 proposal as judged and is kept unchanged as the record.
 **Requested:** 2026-11-16
 **Jira:** VBOT-212, under epic VBOT-210 ("Google Chirp as an alternative speech provider"). Related stories: VBOT-211 (enable the APIs through Terraform) and VBOT-213 (failover planning).
 **Effort:** 2–3 days: two providers with fake-client tests, the CLI, and a live probe. CSAP wiring is a separate CSAP FR.
@@ -15,7 +15,7 @@
 - NC-199/NC-203 (`on_recognizing` drives the consumer's silence timer).
 - `scripts/probe_vr009_lid.py` (probe pattern).
 - CSAP NC-160 (superseded) and CSAP NC-567 (spike; its `eu` block has since lifted).
-**Judgement:** none yet.
+**Judgement:** [SPLIT](VR-012-google-chirp-stt-tts-providers.judgement.md), round 1, 2026-11-16, against `bee7623`. R-1 to R-7 are folded into the successors.
 
 ## Problem and ideal result
 
