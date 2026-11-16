@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature. It adds providers behind the existing `SttProvider`/`TtsProvider` protocols. Existing providers, transports, the session and the protocols are unchanged.
-**Status:** Approved with revisions (round 1, 2026-11-16); R-1 to R-6 folded. Owner gates Q1–Q3 answered (2026-11-16). Offline implementation authorised. Amendment A-1 (simplified live probe) awaits round-2 judgement; offline work is unaffected.
+**Status:** Implemented offline (AC-01 to AC-11, AC-13 met). AC-12 live run 1 (2026-11-16) returned FAIL; awaiting owner manual review (see Implementation record). Earlier: approved with revisions (round 1), R-1 to R-6 folded, Q1–Q3 answered, Amendment A-1 judged in round 2 with owner waiver.
 **Requested:** 2026-11-16
 **Jira:** VBOT-212, under epic VBOT-210.
 **Parent:** [VR-012](VR-012-google-chirp-stt-tts-providers.md), split by its [round-1 judgement](VR-012-google-chirp-stt-tts-providers.judgement.md). This FR owns VR-012's D-2 and D-5 surfaces and its revisions R-2, R-3, R-4, R-6 and R-7. In the rest of this FR, R-1 to R-6 mean the revisions of this FR's own judgement. The cross-provider CLI is [VR-014](VR-014-speech-check-cli.md); this FR does not depend on it.
@@ -222,35 +222,35 @@ Anything outside this table, including VR-014, CSAP or black-box edits, CI beyon
 
 Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network request and use no ADC.
 
-- [ ] **AC-01 (behavioural RED).** A test-only commit adds `tests/test_vr013_google_stt.py` and `tests/test_vr013_google_tts.py`, run with the exact SDK floors installed, before any GREEN commit.
+- [x] **AC-01 (behavioural RED).** A test-only commit adds `tests/test_vr013_google_stt.py` and `tests/test_vr013_google_tts.py`, run with the exact SDK floors installed, before any GREEN commit.
   - Tests reach the providers only through the existing factories (`get_stt_class`, `create_stt`, `create_tts`) and never import `voice_runtime.providers.google_*` at module level.
   - In RED, the only allowed failures are the factories' existing `ValueError("Unknown … provider: google")` and assertion failures. A collection, fixture or dependency error makes the RED invalid.
   - Every new or changed VR-013 test carries `@pytest.mark.req("VR-013")`.
   - The SDK client classes are faked; requests, responses and enums are the real SDK message types.
-- [ ] **AC-02 (optional SDK, R-6).**
+- [x] **AC-02 (optional SDK, R-6).**
   - SDK-dependent test modules start with `pytest.importorskip("google.cloud.speech_v2", reason="optional google extra not installed")` (and the matching TTS module). This is the only allowed skip.
   - A lazy-import witness runs a **fresh subprocess** with a controlled environment and no network: it imports `voice_runtime`, `voice_runtime.stt` and `voice_runtime.tts`, creates Azure STT and Azure TTS through the factories, and asserts that no `google.cloud` module is in `sys.modules`. It runs, and passes, both with and without the Google extra installed.
-- [ ] **AC-03 (STT config, R-4).**
+- [x] **AC-03 (STT config, R-4).**
   - The first request of the initial stream **and of every replacement stream** contains: the recognizer path, `MULAW`/8000/1 decoding, the model, `language_codes=["fi-FI"]`, `interim_results=True`, `enable_voice_activity_events=True` and the mapped endpointing enum.
   - Adaptation appears only with hints; `["Terveystalo"]` produces exactly that phrase.
   - Each of the three endpointing values maps to its enum; any other value → `ValueError` in the constructor.
   - Endpoint `eu-speech.googleapis.com`, quota project equal to the project.
   - Precedence: an explicit argument beats the environment; `GOOGLE_SPEECH_PROJECT` beats `GOOGLE_CLOUD_PROJECT`; an empty `GOOGLE_SPEECH_PROJECT` falls through to `GOOGLE_CLOUD_PROJECT`; explicit `project=""` → `ValueError`; no project → `ValueError` at `start()` with no SDK request.
   - Hints: `GOOGLE_STT_PHRASES=" a, ,b "` → `["a", "b"]`; explicit `[]` disables adaptation even when the variable is set; a non-string entry or a bare `str` → `ValueError`.
-- [ ] **AC-04 (STT audio and pacing, R-1).** With a fake monotonic clock, assert payloads **and** send timestamps:
+- [x] **AC-04 (STT audio and pacing, R-1).** With a fake monotonic clock, assert payloads **and** send timestamps:
   - 25 normally arriving frames → five ordered 800-byte requests at least 100 ms apart.
   - While speaking, the bytes are `0xFF` of the same length.
   - Three frames then the sentinel → one 480-byte request.
   - A preloaded 40-frame backlog → eight 800-byte requests at least 100 ms apart, never faster.
   - Delayed scheduling: the scheduler is held back 500 ms; the next requests are still at least 100 ms apart from each actual previous send (no burst).
   - After a reconnect and after a rotation, the retained audio is sent at the same 1× pace.
-- [ ] **AC-05 (STT callbacks and lag).**
+- [x] **AC-05 (STT callbacks and lag).**
   - Final `" Hei."` → `on_committed("Hei.")` exactly once; a whitespace-only final → no call.
   - An interim result → `on_recognizing(text)`; BEGIN → `on_recognizing("")`.
   - Speaking and echo-window discards work as in Azure.
   - Log line format: exact lag after END, `-1` without END. An END followed by an empty final, then a later final with no new END, logs `-1`. An END before a rotation, followed by a final on the new stream, logs `-1`.
   - The transcript text never appears in a log record.
-- [ ] **AC-06 (rotation and lifecycle).** With a fake clock and fake streams, assert the actual stream sequence and the bytes kept:
+- [x] **AC-06 (rotation and lifecycle).** With a fake clock and fake streams, assert the actual stream sequence and the bytes kept:
   - ordinary rotation at the first final after 270 s (`forced=false`);
   - forced rotation at 290 s with a **silent server** (no responses, no frames) (`forced=true`);
   - a blocked old-stream drain is cancelled after 5 s;
@@ -260,34 +260,34 @@ Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network 
   - normal end of input: the short batch is sent, responses are drained for at most 5 s, a stalled call is cancelled, and the provider exits with no reconnect and no `on_error`;
   - `stop()` during the drain, the opening and the backoff each leave no owned task pending and open no further stream; the client transport is closed;
   - `on_error` is never called by a rotation.
-- [ ] **AC-07 (retry policy, R-2).**
+- [x] **AC-07 (retry policy, R-2).**
   - Each retryable class, and unexpected EOF, at open and while reading → reconnect with the same config request.
   - Exhaustion sequence: initial failure, replacements 1, 2 and 3 fail → exactly 4 opens, backoff 1, 2 and 4 s, then exactly one `on_error("reconnect_exhausted_<Name>")`; no fifth open. For unexpected EOF the reason is `reconnect_exhausted_UnexpectedEOF`.
   - Reset by response: fail, replacement delivers a response, fail ×4 → `on_error` only after the last, and the second series starts its backoff at 1 s.
   - Reset by time: the same sequence, with the replacement running 5 s without error and without responses.
   - Each terminal class, at open and while reading → one `on_error("google_stt_<snake_name>")`, no reconnect.
   - Normal EOF after the sentinel and a successful rotation produce no error and no reconnect.
-- [ ] **AC-08 (TTS, R-4, R-5).**
+- [x] **AC-08 (TTS, R-4, R-5).**
   - With a fake client yielding raw chunks of 333, 160 and 7 bytes, including `RIFF` and `0xFF` byte values inside the payload: the frames concatenate to the input with only end padding; the config request is as in §2; the mark is sent once.
   - Configuration: endpoint `eu-texttospeech.googleapis.com`, quota project, default voice `fi-FI-Chirp3-HD-Charon` with language `fi-FI`, explicit-over-environment precedence; a missing project → `ValueError` with no SDK request, after the three early returns still return their results without a request.
   - Every other row of the §2 table has its own test, including `stop_event=None`, mark timeout and disconnect after the mark wait.
   - Cancellation, with a fake whose next read **blocks until cancelled**: (a) stop set and (b) disconnect → `speak` returns within 1 s of the event; (c) the worker raises a Google API error → error result and one `on_error`. In each case, and after a normal completion, the worker thread has ended (`is_alive()` false) and no frame, tap or mark appears after return. (a) and (b) call no `on_error`.
-- [ ] **AC-09 (factories).**
+- [x] **AC-09 (factories).**
   - `get_stt_class("google")`, `create_stt("google", project="p")` and `create_tts("google", project="p")` return the new types.
   - The NC-165 protocol-conformance tests include the Google cases under the AC-02 skip policy; existing provider cases stay active with unchanged assertions.
-- [ ] **AC-10 (Python and SDK matrix, R-6).**
+- [x] **AC-10 (Python and SDK matrix, R-6).**
   - Fresh venvs on **Python 3.11 and 3.12** with `.[dev,azure,elevenlabs]` plus exactly `google-cloud-speech==2.41.0` and `google-cloud-texttospeech==2.38.0`: `scripts/probe_vr013_sdk_surface.py` passes and the **full offline suite** passes with no optional-Google skip.
   - A second fresh venv per version with `.[dev,azure,elevenlabs]` only (Google never installed): the full suite passes; only the new SDK-dependent cases skip, and the AC-02 subprocess witness and all existing-provider tests run.
   - The record holds the install and test commands, interpreter versions, resolved SDK versions (`pip freeze` excerpt), exit codes and summaries.
   - A lower floor is allowed only if this same evidence passes at that exact version.
-- [ ] **AC-11 (artifacts).**
+- [x] **AC-11 (artifacts).**
   - `ruff check voice_runtime/` (release checklist) passes.
   - `python -m build` and `twine check` pass.
   - A clean non-editable wheel install with `[google]`, run outside the checkout, creates both providers through the public factories without a live request.
 - [ ] **AC-12 (live, Q1 approved; R-3 as amended by A-1).** Run `scripts/probe_vr013_google_session.py` once against `scp-tenant-csap-test` and record the probe output listed in §4.
   - The following block release and are recorded as failure evidence: a 403, 404 or region error; any provider error or timeout; no ordinary rotation observed; any missing or duplicated phrase word.
   - Forced-rotation loss is not measured live (Q2).
-- [ ] **AC-13 (docs).**
+- [x] **AC-13 (docs).**
   - `README.md` gains a Google STT and TTS section covering:
     - the extra, ADC and quota project (workload identity in pods);
     - the configuration table and precedence rules;
@@ -299,6 +299,93 @@ Revised in judgement round 1. Offline criteria (AC-01 to AC-11) make no network 
   - `.env.example` gains commented Google variables.
   - `CHANGELOG.md` records VR-013 under the actual next minor, and the version is bumped. D-6 changes only after Q3. Tagging and publishing need the owner's explicit "publish".
 - [ ] **AC-14 (record).** This FR records the folded revisions, RED and GREEN commits, decisions and deviations, the AC-10 and AC-11 evidence, the AC-12 output, and the owner answers to Q1–Q3. An unanswered or declined gate is recorded as blocked, not fulfilled.
+
+## Implementation record (2026-11-16)
+
+### Commits (branch `feat/vr-013-google-chirp-providers`, local, unpushed)
+
+| Commit | Content |
+|---|---|
+| `302977d` | Round-2 owner decision record (judgement file, Q2 waiver). |
+| `2d7e090` | RED: `tests/test_vr013_google_stt.py` (85), `tests/test_vr013_google_tts.py` (27), `tests/test_vr013_lazy_import.py`, Google cases in `tests/test_factories.py` and `tests/test_nc165_stt_protocol.py`, `req` marker registration in `tests/conftest.py`. Committed with `SKIP=pytest`. |
+| `3f14df3` | GREEN: `google_stt.py`, `google_tts.py`, factory branches, `pyproject.toml` 0.5.0 + `google` extra, README, CHANGELOG, `.env.example`, `publish.yml` (Q3), `scripts/probe_vr013_sdk_surface.py`. |
+| `f17b5f0` | Refactor to pass the size and CC gates; behaviour unchanged. |
+| `3152539` | `scripts/probe_vr013_google_session.py` (AC-12 probe). |
+
+### Offline evidence
+
+- **AC-01 RED validity.** `2d7e090` checked out in a temporary worktree, `pytest tests --no-cov`: 118 failed, 679 passed, 1 skipped, 0 errors. Failures: 81 `Unknown STT provider: google`, 27 `Unknown TTS provider: google`, 10 assertion mismatches (`pytest.raises(match=…)` on the factory error). No collection, fixture or dependency error.
+- **GREEN.** `pytest tests --no-cov` at `f17b5f0`: 797 passed, 1 skipped (ElevenLabs key-gated integration test). The five VR-013-related files ran 5 times in a row: 143 passed each time.
+- **AC-10** (`tmp/matrix.sh` at `3152539`, fresh `uv` venvs, `google-cloud-speech==2.41.0`, `google-cloud-texttospeech==2.38.0`, all install/probe/pytest rc=0):
+
+  | Interpreter | Google extra | SDK surface probe | `pytest tests` |
+  |---|---|---|---|
+  | 3.11.14 | yes | OK 46 names | 797 passed, 1 skipped |
+  | 3.11.14 | no | — | 679 passed, 9 skipped (8 `optional google extra not installed`, 1 ElevenLabs key) |
+  | 3.12.13 | yes | OK 46 names | 797 passed, 1 skipped |
+  | 3.12.13 | no | — | 679 passed, 9 skipped (as above) |
+
+- **AC-11** (`tmp/ac11.sh` at `3152539`): `ruff check voice_runtime/` passes; `python -m build` builds `voice_runtime-0.5.0` sdist and wheel; `twine check` PASSED for both; a clean non-editable install of the wheel with `[google]`, run from `/tmp` with an empty environment and a dead proxy, creates `GooglePersistentStt` and `GoogleTTS` via the factories (rc=0). The build prints a setuptools deprecation warning about the `project.license` TOML table; it is not caused by this change and is not addressed.
+- **Gates.** `pre-commit` (ruff, file-size ≤450, radon CC <21, pytest) passes on `f17b5f0` and `3152539`: `google_stt.py` 450 lines, `GoogleTTS.speak` CC 17, highest STT method CC 11.
+
+### AC-12 live run 1: FAIL, for owner manual review
+
+Command (ADC, synthetic Finnish only): `.venv/bin/python scripts/probe_vr013_google_session.py --project scp-tenant-csap-test > tmp/vr013-live.log 2>&1`, exit 1.
+
+Probe output (verbatim, abridged lists):
+
+```
+git: 3152539fc44dc4235a6e4a4d42ea93697b6a7749 python: 3.14.7
+voice-runtime 0.1.12   (stale editable-install metadata; code imported from the checkout at 3152539)
+google-cloud-speech 2.41.0 / google-cloud-texttospeech 2.38.0 / google-api-core 2.44.0
+tts: phrases=98 synth_s=26.7 ttfc_ms first=407 median=165 max=407
+feed_start_s=0.77
+stream_open_s=1.03,274.42
+rotate at_s=274.42 since_first_open_s=273.39: Google STT stream rotate age_s=273 forced=false drained=true
+expected (98) / committed (101)
+errors: []
+RESULT FAIL: committed words differ from expected sequence
+```
+
+What passed: no 403/404/region error, no provider error, no timeout, no forced rotation. One ordinary rotation (`forced=false`, `drained=true`) at 273.4 s after the first stream open.
+
+What failed: the strict word-sequence rule (AC-12, "any missing or duplicated phrase word"). Aligning expected against committed words (difflib, after removing a leading `kohta`/`ohta` from committed tokens) shows three distinct causes:
+
+1. **Probe scoring artefact (about 25 words).** Chirp often joins the carrier word to the target word (`kohtametsä`, `kohtajärvi`, …). The probe only discards a standalone `kohta` token, so each joined word counts as both missing and unexpected. With the prefix removed, these words all match, in order.
+2. **Recognition errors (substitutions, not loss).** `sade`→`fari`; `orava siili`→`seuraava fiili`; `varis`→`lais`; `delfiini`→`corpo dela filme`; `kilpikonna`→`kilpikonnat`; one inserted `kohpa`, one inserted `pultti`. The audio for each phrase was transcribed; the words are wrong.
+3. **Two findings about stream timing:**
+   - **End of run.** The last two phrases (`pallo`, `nukke`, fed in the final seconds before 300 s) were never committed. After the rotation the provider runs behind the feed at 1× pacing (D-1, up to the 5 s drain plus the open). The probe waits only `TAIL_WAIT_S = 6.0` after the end-of-input sentinel before `stop()`, which is likely too short for the backlog plus the last final. This looks like a probe defect; it is not yet confirmed by a re-run.
+   - **Phrase split at the rotation.** `Kohta norsu`, the phrase in flight when the ordinary rotation fired, was committed as `kohtan` + `orsu`. Part of the utterance went to the old stream and the rest to the new one. No word in the phrase list was lost at the boundary, but the word was split across the two streams. This is consistent with D-2 (drain before open, no overlap). The README does not currently mention that an ordinary rotation can split a word.
+
+Owner decision needed (not taken by the implementer):
+
+- whether AC-12's exact-sequence rule stands, or is amended (e.g. tolerate the carrier prefix and report substitutions while failing only on errors, no rotation, or a run of missing words near the rotation); an AC change needs an amendment and re-judge;
+- whether to fix the probe tail wait and the `kohta` prefix handling (D-4 scope) and re-run;
+- whether the split-at-rotation finding goes into the README and Open risks.
+
+Raw output: `tmp/vr013-live.log` (not committed).
+
+### Decisions and deviations made during enforcement
+
+- **Deviation from D-2 file list.** I added a new private module, `voice_runtime/providers/_google_config.py`, which is not in the D-2 file list. It holds the shared project/env resolution, defaults, hint parsing, endpointing validation and the first-request builder. It was needed to bring `google_stt.py` under the 450-line gate (553 lines before) and it removes logic duplicated between the providers. `_build_config_request()` is still the single builder and delegates to `SttSettings.config_request()`. The module imports the Speech SDK only inside that method.
+- **Test registration.** The `req` marker is registered in `tests/conftest.py`, because it was not registered before.
+- **`publish.yml`.** The approved diff omitted `-e`; the actual line is `pip install -e ".[dev,elevenlabs,azure,google]"`. The editable flag was already there and is unchanged.
+- **TTS behaviour:**
+  - The client is created lazily on the first `speak`.
+  - A cancel during a blocked first read closes the client transport and drops the cached client.
+  - Any worker exception counts as an API error result.
+  - Logs show the character count only.
+  - The queue polling loop is extracted to `_pump` to meet the CC gate.
+- **STT behaviour:**
+  - An unclassified exception is treated as terminal.
+  - After the input ends, a retryable error or EOF is only logged; a terminal error still fires its one callback.
+  - A retryable error during a rotation drain starts a new series at attempt 1.
+  - The rotate log line is written only after a successful rotation.
+  - Endpointing values must match exactly in lowercase.
+  - Interim results and BEGIN are ignored while speaking.
+  - The speaking mute is decided when a frame enters the carry buffer.
+- **Process gap.** `pre-commit` hooks are not installed in this repository (`.git/hooks` has no `pre-commit`). `2d7e090` and `3f14df3` were committed without the gates running; running them afterwards found the size and CC violations that `f17b5f0` fixes. From `f17b5f0` on, `pre-commit run --files …` was run manually before each commit.
+- **Not done, needs owner:** push, tag, publish (AC-13: "publish" needed).
 
 ## Decisions
 
