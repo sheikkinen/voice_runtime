@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from voice_runtime.providers import SttProvider
 
 from tests.conftest import requires_azure
@@ -92,6 +94,37 @@ class TestElevenLabsSttConformance:
         from voice_runtime.providers.elevenlabs_stt import PersistentSttSession
 
         stt = PersistentSttSession()
+        assert stt.on_committed is None
+
+
+@pytest.mark.req("VR-013")
+class TestGoogleSttConformance:
+    """Verify GooglePersistentStt satisfies SttProvider (VR-013 AC-09)."""
+
+    @staticmethod
+    def _cls():
+        pytest.importorskip(
+            "google.cloud.speech_v2", reason="optional google extra not installed"
+        )
+        from voice_runtime.stt import get_stt_class
+
+        return get_stt_class("google")
+
+    def test_has_all_required_methods(self):
+        cls = self._cls()
+        stt = cls.__new__(cls)
+        for method in REQUIRED_METHODS:
+            assert callable(
+                getattr(stt, method, None)
+            ), f"GooglePersistentStt missing method: {method}"
+
+    def test_has_all_required_attributes(self):
+        stt = self._cls()(project="p")
+        for attr in REQUIRED_ATTRIBUTES:
+            assert hasattr(stt, attr), f"GooglePersistentStt missing attribute: {attr}"
+
+    def test_on_committed_default_is_none(self):
+        stt = self._cls()(project="p")
         assert stt.on_committed is None
 
 
