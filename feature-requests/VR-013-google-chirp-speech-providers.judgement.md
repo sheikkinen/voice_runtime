@@ -152,3 +152,146 @@ Owner decision (Sami Heikkinen):
 
 - **Draft not promoted.** None of R-1 to R-3 is folded; Amendment A-1 and the FR stand as committed at `cdb504e`. The round-2 draft is advisory and is not adopted.
 - **Waiver accepted.** The owner accepts that a forced swap may lose an in-flight utterance, including content spoken before the cut, unmeasured and without a loss bound. This supersedes round-1 C-3 for this library release.
+
+## Round 3 (Amendment A-2) — human promotion record — 2026-11-16
+
+The YAMLGraph judge route (CSAP `scripts/judge.sh`) judged Amendment A-2 at voice_runtime `8085094`. Draft verdict: APPROVED WITH REVISIONS, R-1 to R-5. The draft is reproduced verbatim below; only its heading levels are lowered by two so that it nests in this file.
+
+Owner decision (Sami Heikkinen):
+
+- **Promoted:** R-1 (honest wording, original FAIL preserved), R-2 (deterministic scorer in the probe, synthetic witnesses, committed run-1 evidence), R-4 (TTS event-to-return budget and explicit worker non-termination failure), R-5 (frozen-surface reconciliation and durable AC-10/AC-11 evidence).
+- **R-3 not promoted; replaced.** No change to the probe tail-wait logic and no AC-16. Rationale: no re-run of the VR-013 live probe is planned (owner answer 3); natural-speech checks move to a csap-black-box end-to-end follow-up. Instead, the FR records that the cause of the two unmatched final words (`pallo`, `nukke`) is **unconfirmed**. The D-4 phrase "bounded completion" and AC-12/AC-14 references to R-3 are void.
+- AC-15 is adopted. AC-16 is dropped with R-3.
+
+### Judgement: VR-013 Google Chirp 3 STT and TTS providers
+
+**Verdict:** APPROVED WITH REVISIONS - the optional provider extension and owner-selected A-2 policy are sound directions, but acceptance requires R-1 through R-5; this DRAFT is advisory until human review and incorporation into the committed FR.
+
+**Reviewed against:** Committed artifacts only. `VR/` means `/Users/sami.j.p.heikkinen/src/yamlgraph/projects/voice_runtime` at `808509449877348b9f617df0e5961c1bf611b6ab`; `CSAP/` means `/Users/sami.j.p.heikkinen/src/customer-service-agent-platform` at `a60fb2b9bb42682fbcfe8e8dd5f7d26ebb8739d2`; `YG/` means `/Users/sami.j.p.heikkinen/src/yamlgraph` at `ad5db79402238a70b4e7028759bf2d5d81e24edf`.
+
+- Request: `VR/feature-requests/VR-013-google-chirp-speech-providers.md` (`FR` below), including implementation evidence, A-1/A-2 and the recorded owner decisions.
+- Prior judgement: `VR/feature-requests/VR-013-google-chirp-speech-providers.judgement.md`, including round-1 promotion and the round-2 human decision record.
+- Cited evidence: `VR/feature-requests/evidence/VR-012-research.md`; `VR/scripts/probe_vr013_google_session.py`; `VR/voice_runtime/providers/__init__.py`; `VR/voice_runtime/providers/google_tts.py:1-235`; `VR/voice_runtime/providers/google_stt.py:1-200,290-450`; `VR/voice_runtime/providers/_google_config.py`.
+- Doctrine: `CSAP/.github/skills/judge-fr/doctrine.md`; `CSAP/.github/skills/judge-fr/judgement.template.md`; `CSAP/.github/copilot-instructions.md:1-100,210-end`; `YG/.github/copilot-instructions.md:1-231`; `VR/reference/release-checklist.md`.
+
+The target working tree was clean, and the consumed CSAP/YAMLGraph doctrine files were unmodified. Repository identity/status checks were used only to establish committed provenance. The uncommitted `VR/tmp/vr013-live.log`, `tmp/matrix.sh`, `tmp/ac11.sh`, author conversations and working notes were not consumed. Their contents are not independently established by the FR's summaries. No live request, credential access, judge invocation or implementation was performed. This temporary draft does not replace the canonical judgement.
+
+#### What is sound
+
+The proposal remains one Google vendor integration behind existing STT/TTS protocols, not a new framework primitive or a second diagnostic product. Optional SDK imports, unchanged consumer protocols and transports, serialized streams, real-time pacing, synthetic-only probes and separate CSAP acceptance are appropriate boundaries (`FR:20-37,168-192,209-219,435-453`; `providers/__init__.py:23-57`).
+
+A-2 correctly distinguishes spoken carrier text from punctuation: joining `kohta` to a word does not invent content. The committed examples identify meaningful raw-output surprises, including a word split between streams, substitutions and an unmatched tail (`FR:346-371,390-394`). The owner has explicitly chosen a reported-only match share, a three-consecutive-unmatched-word threshold and reuse of run 1 without a paragraph rerun (`FR:397-407`). Those product/spend decisions are not the judge's to replace with a new accuracy gate.
+
+The strongest case against approval is that changing a scorer after observing a failure can turn a weak proxy into a false continuity claim. A-2 presently calls a threshold-based pass loss-free and attributes the missing tail to a confirmed probe defect without confirming evidence. This does not invalidate an optional backend, but it requires honest semantics, reproducible evidence and bounded completion before acceptance.
+
+| Rubric criterion | Assessment and evidence |
+|---|---|
+| 1. Scope | One provider extension with necessary probes; retain the parent partition. A-2 needs only local scoring, completion and documentation changes, not a generic evaluator or new consumer rollout (`FR:209-219,374-409,455-end`). |
+| 2. Consistency | The operative probe recipe and AC-12 still require exact words, whereas A-2 tolerates unmatched words. A-2 changes documentation while declaring AC-13 unchanged. Polling plus a fresh one-second budget also conflicts with AC-08's event-to-return bound (`FR:163-164,178-183,272-289,385-409`). R-1 and R-4 resolve these. |
+| 3. Measurability | The threshold is countable only after reference construction, alignment and word attribution are fixed. A reported 91/98 cannot be recomputed from abridged sequences (`FR:335-345,366,378-394`). R-2 is required. |
+| 4. Feasibility | The cited SDK research and recorded Python matrix support the backend. The existing probe has neither timestamped commits nor a completion-aware tail; three quiet seconds can precede outstanding audio (`FR:278-286,319-328,379-385`; probe:266-293). R-2/R-3 make the probe workable. |
+| 5. Architecture alignment | Existing protocols suffice; private Google configuration extraction is defensible but must enter frozen scope. No session/protocol changes are needed for probe-local completion observation (`FR:413`; `_google_config.py:1-128`; `google_stt.py:128-173`). |
+| 6. Single responsibility | STT, TTS and their witnesses remain one vendor integration. The independent cross-provider CLI, failover and consumer safety work remain excluded (`FR:8,209-219,455-end`). No further SPLIT is warranted. |
+| 7. Strategic classification | **Contrib/provider extension**: one named first consumer, CSAP, using existing abstractions. Neither three independent use cases nor a missing framework abstraction is established (`FR:11,20-24`; `providers/__init__.py:23-57`). |
+| 8. Testability | Existing factory-based RED avoids import/fixture failures. A-2 lacks synthetic witnesses for its new scorer and wait policy, and AC-08 lacks a worst-case cancellation witness implied by its contract (`FR:225-232,272-277,378-385`; `google_tts.py:34-35,199-207`). R-2 through R-4 define them. |
+
+#### Required revisions
+
+##### R-1: Fold A-2 into the operative contract and limit its claims
+
+Replace the exact-sequence pass rules in section 4 and AC-12 with the owner's A-2 rule; update Status, AC-13 and Open risks consistently (`FR:5,178-183,287-301,374-409`). Preserve run 1's original exit code 1 and FAIL under the original scorer. Label any later result **retrospective PASS under A-2**, with a distinct scorer identity; never rewrite the original outcome.
+
+State that the threshold detects an unmatched-word pattern, not the cause of that pattern. Dropped audio can remove one or two words, and misrecognition can affect three or more; the threshold cannot distinguish those phenomena by itself (`FR:383,400`). It also does not gate inserted text, duplicated content or aggregate quality. Document those limits without adding a new quality threshold.
+
+Replace "without loss," "there is no loss at the rotation," "harmless" and the definitive tail-defect attribution with bounded observations: the displayed boundary word reconstructs after whitespace normalization; ordinary rotation can split an utterance; two final reference words were unmatched; their cause remains unconfirmed (`FR:178,355-358,386,390,393`). Downstream semantic harmlessness has not been demonstrated here. Retain the explicit owner forced-loss waiver (`FR:445`; prior judgement:148-155); do not revive the unpromoted round-2 revisions as authority.
+
+Retain the recorded no-rerun decision. AC-12 may be completed from historical evidence only after R-2, not from the current unsupported aggregate. A paragraph/black-box quality run remains a separate consumer concern.
+
+##### R-2: Specify and witness a deterministic scorer, then commit reproducible run-1 evidence
+
+The instruction "align the character streams" does not specify an algorithm or how repeated carrier words are handled (`FR:378-379`). Fold a complete scoring contract into the FR:
+
+1. Use Unicode case folding and explicitly defined whitespace/punctuation removal while retaining Finnish letters. Preserve a map from normalized reference offsets to the original phrase and target-word index.
+2. Include the actually spoken `Kohta` carrier in each expected phrase. Count only the unique target words in the denominator, not the repeated carrier. Do not strip a guessed prefix from arbitrary recognized words.
+3. Name the alignment algorithm, options and deterministic tie behavior. Disable any frequency-based heuristic that can discard repeated carrier characters. Define exactly when all target characters constitute a match, including insertions inside versus after a target and matches spanning adjacent commits.
+4. Compute consecutive unmatched runs over the original target order, including leading and trailing unmatched words. Report inserted text and duplicates separately, with no extra release threshold. Bind the ordinary-rotation check to the actual stream-open time, not feed time.
+
+Add a few synthetic, network-free tests in the existing VR-013 test surface, each marked `@pytest.mark.req("VR-013")`: joined carrier/punctuation and split-across-commit success; a genuine substitution remaining unmatched; trailing insertion reporting; two-versus-three consecutive unmatched words, including at EOF; repeated-carrier input long enough to expose alignment heuristics. Test the actual probe scorer, not constants or document wording.
+
+Commit a sanitized evidence artifact under `feature-requests/evidence/` holding the complete ordered expected target list, complete original committed texts, original command/SHA/versions, observed stream/rotation records and errors. Add the exact offline rescore command, scorer SHA/options, per-word match flags, inserted text, longest unmatched run and totals. The original raw file is expressly uncommitted, and the excerpt omits the full lists (`FR:335-345,366,388-394`), so 91/98 is currently a claim, not an auditable result.
+
+For the requested +/-5-second boundary report, distinguish reference-audio time from commit-receipt time and use actually recorded timestamps. The current probe stores neither phrase offsets nor commit timestamps (`probe:241-293`). Record unavailable historical timing as unavailable; do not infer it from word order. A future-run boundary report can use new probe-local timestamps, but no new live run is required solely to backfill historical timing. Keep AC-12 blocked if complete historical sequences cannot be recovered; only a human can then authorize another run or an explicit evidence waiver.
+
+##### R-3: Make the tail wait completion-aware and bound the entire probe
+
+Three seconds without a commit after enqueueing `None` does not prove queued audio has reached the SDK or response draining has finished (`FR:385`; probe:284-293). A five-second rotation drain alone can exceed that quiet interval, and 1x pacing preserves the resulting backlog (`FR:435`).
+
+Use probe-local observation of the existing STT owned-task lifecycle: wait for natural input/response completion before treating a three-second quiet interval as completion. Cap the post-sentinel phase at 15 seconds. If the owner task remains active at the cap, record a tail-completion timeout and fail the prospective run, then perform bounded cleanup. Do not change the public protocol, production thresholds or force `stop()` merely because an active stream has been quiet. Preserve and surface provider task exceptions rather than reporting them as successful completion.
+
+Define whether the 360-second overall budget includes synthesis, streaming and the tail; include them, with separately bounded 15-second teardown. The current timeout wraps only `run_stt`, leaving synthesis outside it (`probe:321-340`; `FR:181`). No detached synthesis worker or abandoned thread is authorized.
+
+Add synthetic probe tests for a quiet interval while audio remains pending, commits arriving after that interval, natural completion and expiration of the tail/overall deadlines. Keep the retrospective run-1 score distinct from validation of this changed wait policy: an offline rescore cannot prove the tail fix worked live or explain the missing final words.
+
+##### R-4: Restore the already-frozen TTS event-to-return and worker-ownership contract
+
+This is an unresolved contradiction in the submitted FR, not permission to import the unpromoted round-2 verdict. AC-08 measures one second from the event, but section 2 grants one second after detection plus up to 50 ms polling (`FR:163,272-277`). The cited implementation starts that full second after `_pump` returns and logs a live worker before returning a normal interruption/disconnection result (`google_tts.py:34-35,199-215`), contrary to the FR's no-escape requirement (`FR:164`).
+
+Fold an event-to-return budget that reserves polling time: at most 950 ms for cancellation/join after detection, with the existing at-most-50-ms polling allowance included in the one-second total. Cancellation itself must be covered, not just `join`. Add a worst-case synthetic blocked-read witness with delayed cancellation/worker exit and an event arriving immediately after a poll; cover both stop and disconnect, and assert total elapsed time and worker termination.
+
+Require explicit failure rather than a success-shaped return when a worker does not terminate. Do not claim worker cleanup fulfilled merely because an error was logged. If the SDK cancellation path cannot satisfy bounded return and terminated ownership together, leave AC-08/release blocked and amend the lifecycle design; do not use daemon threads, detached work or silently relax the contract. Any implementation correction is limited to this existing Google TTS cancellation/cleanup seam and its tests.
+
+##### R-5: Reconcile frozen surfaces and complete durable evidence
+
+Fold `_google_config.py` into D-2 as a private extraction of the already-authorized configuration/request builder, not a shared framework. Add the already-recorded requirement-marker registration in `tests/conftest.py` to D-3 (`FR:209-219,413-414`). Include synthetic probe tests and the sanitized evidence artifact authorized by R-2/R-3.
+
+AC-10 requires exact install/test commands, resolved versions and results, but the record currently names uncommitted scripts and abbreviated summaries (`FR:278-282,319-328`). Copy the relevant commands, interpreter/SDK resolution excerpts, exit codes and summaries into committed evidence; do not consume or rely on temporary scripts as lasting proof. Existing recorded results need not be rerun just to transcribe recoverable evidence, but any production correction in R-4 must rerun the affected checks and package validation.
+
+Update AC-14 and Status to distinguish completed original criteria, pending amendment tests, retrospective scoring and outstanding lifecycle evidence. AC-13 cannot remain fulfilled for newly required ordinary-rotation documentation before that documentation exists. Record the exact effective workflow line with the retained `-e`, and preserve its human-review gate; no additional CI or hook change is authorized (`FR:415,446-447`).
+
+#### Scope is frozen
+
+The following supplements the previously promoted scope; it is not present implementation authority.
+
+| Deliverable | Surface |
+|---|---|
+| D-1 | VR-013 FR, its canonical judgement after human promotion, and sanitized `feature-requests/evidence/VR-013-*` scoring/validation evidence. |
+| D-2 | Existing Google STT/TTS provider surfaces and factories, plus private `voice_runtime/providers/_google_config.py`; new production correction limited to R-4 Google TTS cancellation/cleanup. |
+| D-3 | Existing VR-013 provider/lazy-import tests and directly necessary factory/conformance cases; `tests/conftest.py` marker registration; synthetic probe scorer/wait witnesses in the VR-013 test surface. |
+| D-4 | `scripts/probe_vr013_sdk_surface.py` and `scripts/probe_vr013_google_session.py`; local deterministic scoring, timestamps and bounded completion only. |
+| D-5 | Already-authorized Google extra/minor-release metadata, directly related README/environment examples/changelog; honest ordinary/forced rotation limitations. |
+| D-6 | Previously owner-approved Google-extra addition to the test-job install line in `.github/workflows/publish.yml`, retaining `-e`; human review remains required. |
+
+Not authorized: generic scoring/evaluation frameworks, VR-014, CSAP/black-box edits or calls, deployment or consumer pins, failover, new callbacks or protocol/session/transport changes, existing-provider refactors, IAM/Terraform/region-policy work, faster catch-up, overlapping streams, replay/deduplication, speech-quality thresholds invented by the enforcer, non-streaming TTS, real caller/patient audio, credential inspection/storage/logging, additional CI/hooks/doctrine changes, tags or publication. No new live request is required or authorized by this judgement.
+
+#### Revised acceptance criteria
+
+- [ ] AC-01: Preserve the original factory-based behavioral RED/GREEN record and VR-013 requirement markers. Amendment scorer/wait and any R-4 behavior correction have focused failing synthetic witnesses before their fixes; no collection, fixture or dependency failure counts as RED.
+- [ ] AC-02: Preserve optional-Google skips and fresh-subprocess lazy-import witnesses, with and without Google installed. Existing provider tests remain active.
+- [ ] AC-03: Preserve initial/replacement STT request, SDK enum, hints, endpoint/quota project, precedence and validation witnesses.
+- [ ] AC-04: Preserve actual-byte and fake-clock 1x pacing witnesses for normal input, backlog, delayed scheduling, short EOF and replacements.
+- [ ] AC-05: Preserve callback/discard/lag and transcript-free production-log witnesses; reconcile the recorded speaking-time callback policy explicitly in the FR.
+- [ ] AC-06: Preserve actual stream-sequence witnesses for ordinary/forced rotation, bounded drains, unsent-byte retention, serialized ownership, EOF and stop precedence.
+- [ ] AC-07: Preserve four-failed-stream exhaustion, 1/2/4-second delays, both success-reset mechanisms, terminal errors and normal EOF/rotation witnesses.
+- [ ] AC-08: Preserve the original TTS result/frame/mark cases; R-4's worst-case stop/disconnect witnesses prove event-to-return <=1 second, terminated workers and no post-return frames/taps/marks. Nontermination is explicit failure, never successful interruption.
+- [ ] AC-09: Preserve all Google factory and conditional protocol-conformance cases without weakening existing provider assertions.
+- [ ] AC-10: Preserve the fresh Python 3.11/3.12 exact-SDK-floor and Google-never-installed matrix; commit the actual commands, versions, exits and summaries required by R-5.
+- [ ] AC-11: Preserve ruff/build/twine and outside-checkout non-editable wheel-factory evidence; refresh affected package evidence after production correction.
+- [ ] AC-12: Using committed complete run-1 evidence and the deterministic A-2 scorer, record the original FAIL separately from retrospective acceptance. Pass only with no recorded provider/region error or timeout, one ordinary rotation after 270 seconds of actual stream age, no forced rotation, and longest consecutive unmatched target-word run <3. Report match share and insertions without a quality gate. Record historical timing gaps honestly; no loss-free claim or paragraph rerun requirement is added.
+- [ ] AC-13: README/Open risks document ordinary utterance splitting, heuristic limitations and unmatched-tail uncertainty alongside existing callback cadence, 1x backlog and owner-waived forced loss. Existing packaging/auth/configuration documentation and next-minor policy remain; D-6 retains exact human-reviewed scope.
+- [ ] AC-14: The FR records folded revisions, amendment commits, durable original/offline-rescore evidence, decisions, deviations and all pending/fulfilled gates accurately. Unsupported results remain pending.
+- [ ] AC-15: Synthetic tests exercise R-2's actual scorer and prove normalized join/split handling, genuine unmatched content, insertion reporting and two-versus-three consecutive unmatched targets including EOF. The offline rescore emits reproducible per-word flags and totals from complete committed sequences.
+- [ ] AC-16: Synthetic tests exercise R-3's actual completion/wait policy: quiet pending audio is not completion, late commits are retained, natural completion succeeds, and tail/overall timeout fails with bounded cleanup. Prospective probe output timestamps phrase feeds and commit receipt separately.
+
+#### Conditions for enforcement
+
+| # | Condition | Severity |
+|---|---|---|
+| C-1 | A human reviews/promotes this DRAFT and R-1 through R-5 are folded into the committed FR before amendment authority activates. | GATE |
+| C-2 | The owner's recorded reported-only quality metric, three-word threshold and no-rerun decision are preserved. They waive strict continuity acceptance, not evidence integrity or consumer safety; no new spend/policy decision is made by the agent. | GATE |
+| C-3 | AC-12 stays pending until complete committed historical evidence is reproducibly scored. If it cannot be recovered, record blocked and obtain a human evidence waiver or separately approved new run; never silently substitute summaries. | GATE |
+| C-4 | SDK/task/thread ownership and the frozen cancellation contract must be met. A logged surviving worker or an unconfirmed tail explanation cannot satisfy acceptance. | GATE |
+| C-5 | No network/ADC in offline RED or amendment tests; no live services or credentials during judgement/revision preparation. Any future billable probe needs explicit human authority for that run. | GATE |
+| C-6 | The sole workflow-line change remains subject to human review of the exact effective diff. No enforcement-infrastructure expansion or gate bypass is permitted. | GATE |
+| C-7 | Preserve the explicit forced-loss owner waiver; CSAP rollout, timers and field-quality acceptance remain separately gated. This draft grants no deployment, tagging or publication authority. | GATE |
+
+Authority granted: none by this advisory draft; after human promotion and committed revisions, only the frozen local amendment surfaces and the narrowly required Google TTS contract correction may be enforced, with retrospective live acceptance dependent on durable evidence and all release/consumer actions separately gated.
