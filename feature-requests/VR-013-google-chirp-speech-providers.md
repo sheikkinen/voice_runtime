@@ -2,7 +2,7 @@
 
 **Priority:** MEDIUM
 **Type:** Feature. It adds providers behind the existing `SttProvider`/`TtsProvider` protocols. Existing providers, transports, the session and the protocols are unchanged.
-**Status:** Implemented offline (AC-01 to AC-11, AC-13 met). AC-12 live run 1 (2026-11-16) returned FAIL; awaiting owner manual review (see Implementation record). Earlier: approved with revisions (round 1), R-1 to R-6 folded, Q1–Q3 answered, Amendment A-1 judged in round 2 with owner waiver.
+**Status:** Implemented offline (AC-01 to AC-11, AC-13 met). AC-12 live run 1 (2026-11-16) returned FAIL; owner reviewed and recommended natural-paragraph input; Amendment A-2 drafted, awaits owner answers and round-3 judgement. Earlier: approved with revisions (round 1), R-1 to R-6 folded, Q1–Q3 answered, Amendment A-1 judged in round 2 with owner waiver.
 **Requested:** 2026-11-16
 **Jira:** VBOT-212, under epic VBOT-210.
 **Parent:** [VR-012](VR-012-google-chirp-stt-tts-providers.md), split by its [round-1 judgement](VR-012-google-chirp-stt-tts-providers.judgement.md). This FR owns VR-012's D-2 and D-5 surfaces and its revisions R-2, R-3, R-4, R-6 and R-7. In the rest of this FR, R-1 to R-6 mean the revisions of this FR's own judgement. The cross-provider CLI is [VR-014](VR-014-speech-check-cli.md); this FR does not depend on it.
@@ -364,6 +364,34 @@ Owner decision needed (not taken by the implementer):
 - whether the split-at-rotation finding goes into the README and Open risks.
 
 Raw output: `tmp/vr013-live.log` (not committed).
+
+**Owner manual review (2026-11-16, Sami Heikkinen):** "chirp stt seems to add extra kohta- prefix on multiple cases. otherwise the wordlist seems okayish. recommendation: test with real paragraphs, not just a wordlist to see the effect more natural setting."
+
+- Implementer note: `Kohta` is spoken in every probe phrase (`"Kohta <word>."`). Chirp does not invent it; it often writes it joined to the next word (`kohtametsä`). A carrier word before an isolated noun is an unnatural input, which supports the owner's recommendation.
+- Run 1 therefore stays recorded as FAIL against the current rule. The recommended next step is Amendment A-2 below, which needs judging before the probe changes.
+
+### Amendment A-2 — 2026-11-16 (draft; awaits owner confirmation and round-3 judgement)
+
+**Change (proposed).** Replace the AC-12 word-list probe with natural-paragraph input:
+
+- **Input.** About 12 to 15 fixed, distinct synthetic Finnish paragraphs, each 2 to 4 sentences. Use everyday or clinic-reception style text with no real caller or patient data and no numbers. Each paragraph is followed by 1.5 s of silence, and the layout fills 300 s, as now.
+- **Scoring.**
+  - Normalise both sides: lowercase and strip punctuation.
+  - Align the reference words with the committed words and report the substitutions, insertions and deletions, the word error rate (WER), and the alignment within ±5 s of the rotation.
+- **Pass.**
+  - No provider error or timeout.
+  - One ordinary rotation (`forced=false`) after 270 s and no forced rotation.
+  - No run of 3 or more consecutive deleted reference words anywhere, which would indicate lost audio rather than misrecognition.
+  - WER is reported, not gated (open question below).
+- **Probe defect fix.** After the end-of-input sentinel, wait until no commit has arrived for 3 s, at most 15 s, instead of a fixed 6 s. This leaves the post-rotation backlog time to drain (D-1) before `stop()`.
+- **Docs.** README and Open risks add that an ordinary rotation can split the utterance in flight across two streams (run 1: `norsu` → `kohtan` + `orsu`).
+
+**Open questions for the owner.**
+
+1. Should WER have a release threshold, or is it reported only?
+2. Is a 3-word deletion run the right loss signal?
+
+**Unchanged.** The provider code, the rotation design (D-2), and AC-01 to AC-11 and AC-13.
 
 ### Decisions and deviations made during enforcement
 
