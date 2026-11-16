@@ -23,6 +23,7 @@ from voice_runtime.tts import create_tts  # noqa: E402 — after skip (AC-02)
 
 FRAME = 160
 BLOCK = object()
+STUCK = object()
 CANCEL_BUDGET_S = 1.0
 GOOGLE_ENV = (
     "GOOGLE_SPEECH_PROJECT",
@@ -75,16 +76,32 @@ class FakeSession:
 
 
 class FakeCall:
-    """Response stream; a BLOCK item blocks the read until cancel()."""
+    """Response stream; a BLOCK item blocks the read until cancel().
 
-    def __init__(self, script: list, blocked: threading.Event) -> None:
+    ``cancel_delay`` makes cancel() itself slow; ``exit_delay`` delays the
+    blocked read's exit after cancel. A STUCK item ignores cancel and blocks
+    until ``release`` is set (a worker that cannot be terminated).
+    """
+
+    def __init__(
+        self,
+        script: list,
+        blocked: threading.Event,
+        cancel_delay: float = 0.0,
+        exit_delay: float = 0.0,
+        release: threading.Event | None = None,
+    ) -> None:
         self._items = list(script)
         self._cancelled = threading.Event()
         self._blocked = blocked
+        self._cancel_delay = cancel_delay
+        self._exit_delay = exit_delay
+        self._release = release or threading.Event()
         self.cancel_count = 0
 
     def cancel(self) -> None:
         self.cancel_count += 1
+        time.sleep(self._cancel_delay)
         self._cancelled.set()
 
     def __iter__(self):
@@ -99,6 +116,11 @@ class FakeCall:
         if item is BLOCK:
             self._blocked.set()
             self._cancelled.wait(timeout=10.0)
+            time.sleep(self._exit_delay)
+            raise gexc.Cancelled("Locally cancelled")
+        if item is STUCK:
+            self._blocked.set()
+            self._release.wait(timeout=10.0)
             raise gexc.Cancelled("Locally cancelled")
         if isinstance(item, BaseException):
             raise item
@@ -144,6 +166,9 @@ class FakeSdk:
         self.clients: list[FakeClient] = []
         self.blocked = threading.Event()
         self.before_return = None
+        self.cancel_delay = 0.0
+        self.exit_delay = 0.0
+        self.release = threading.Event()
 
     @property
     def requests(self) -> list:
@@ -169,7 +194,13 @@ class FakeClient:
     def streaming_synthesize(self, requests=None, **kwargs):
         self.threads.append(threading.current_thread())
         self.requests.extend(list(requests))
-        call = FakeCall(self.sdk.script, self.sdk.blocked)
+        call = FakeCall(
+            self.sdk.script,
+            self.sdk.blocked,
+            self.sdk.cancel_delay,
+            self.sdk.exit_delay,
+            self.sdk.release,
+        )
         self.calls.append(call)
         if self.transport.closed:
             call.cancel()
@@ -190,7 +221,10 @@ def sdk(monkeypatch) -> FakeSdk:
     fake = FakeSdk()
     client_cls = type("FakeTextToSpeechClient", (FakeClient,), {"sdk": fake})
     monkeypatch.setattr(texttospeech, "TextToSpeechClient", client_cls)
-    return fake
+    yield fake
+    fake.release.set()
+    for thread in fake.worker_threads:
+        thread.join(timeout=5.0)
 
 
 def _expected_config(voice: str = "fi-FI-Chirp3-HD-Charon", lang: str = "fi-FI"):
@@ -553,6 +587,68 @@ def test_worker_api_error_mid_stream_returns_error(sdk):
     assert session.of("mark") == []
     assert all(len(f) == FRAME for f in session.of("frame"))
     _assert_quiet_after_return(session, sdk)
+
+
+# ── Worst-case cancellation and non-termination (round 3, R-4, AC-08) ───
+
+_TRIGGERS = {
+    "stop": ({"last_spoken": "Hei", "interrupted": True}, lambda s, e: e.set()),
+    "disconnect": (
+        {"last_spoken": "Hei", "call_disconnected": True},
+        lambda s, e: s.disconnect(),
+    ),
+}
+
+
+@pytest.mark.req("VR-013")
+@pytest.mark.parametrize("trigger", sorted(_TRIGGERS))
+def test_slow_cancel_and_slow_exit_still_return_within_one_second(sdk, trigger):
+    expected, fire = _TRIGGERS[trigger]
+    sdk.script = [_payload(320, 3), BLOCK]
+    sdk.cancel_delay = 0.35
+    sdk.exit_delay = 0.4
+    session = FakeSession()
+    stop = threading.Event()
+    tts = create_tts("google", project="p")
+    errors: list[str] = []
+    tts.on_error = errors.append
+    fired = _fire_when_blocked(sdk, lambda: fire(session, stop))
+
+    result = tts.speak("Hei", session, stop_event=stop)
+    returned = time.monotonic()
+    fired["thread"].join()
+
+    assert result == expected
+    assert returned - fired["t"] < CANCEL_BUDGET_S
+    assert errors == []
+    assert session.of("mark") == []
+    _assert_quiet_after_return(session, sdk)
+
+
+@pytest.mark.req("VR-013")
+@pytest.mark.parametrize("trigger", sorted(_TRIGGERS))
+def test_worker_not_terminated_is_explicit_failure(sdk, trigger):
+    _, fire = _TRIGGERS[trigger]
+    sdk.script = [_payload(320, 4), STUCK]
+    session = FakeSession()
+    stop = threading.Event()
+    tts = create_tts("google", project="p")
+    errors: list[str] = []
+    tts.on_error = errors.append
+    fired = _fire_when_blocked(sdk, lambda: fire(session, stop))
+
+    result = tts.speak("Hei", session, stop_event=stop)
+    returned = time.monotonic()
+    fired["thread"].join()
+
+    assert result == {"last_spoken": "Hei", "error": "google_tts_worker_not_terminated"}
+    assert errors == ["google_tts_worker_not_terminated"]
+    assert returned - fired["t"] < CANCEL_BUDGET_S
+    assert session.of("mark") == []
+    before = session.count()
+    time.sleep(0.2)
+    assert session.count() == before
+    assert tts._client is None
 
 
 @pytest.mark.req("VR-013")
