@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.1 - Unreleased
+
+### Fixed
+
+- **VR-015**: Google STT `on_recognizing("")` now repeats every 0.25 s
+        while Google reports active speech. It stops at speech end, a
+        final result, stream end (rotation, retry, end of input),
+        `stop()`, or a 30 s cap (one `WARNING` `Google STT speech pulse
+        cap reached after 30s`). Like the existing speech-start callback,
+        it is suppressed while speaking and not by the echo window.
+        Consumers that treat `on_recognizing` as a still-speaking signal
+        no longer cut callers off mid-utterance. Limits: no signal
+        between Google's speech end and the final (0.4-0.9 s observed),
+        after the 30 s cap, or across a stream replacement until the next
+        speech start. No API, configuration or other provider changes.
+
 ## 0.6.0 - Unreleased
 
 ### Added

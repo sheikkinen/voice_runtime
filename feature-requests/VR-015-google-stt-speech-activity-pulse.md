@@ -2,7 +2,7 @@
 
 **Priority:** HIGH (blocks the CSAP Chirp trial NC-586)
 **Type:** Bug fix in one provider. `GooglePersistentStt` gains a timer-driven `on_recognizing("")` pulse while Google reports speech in progress. No public API, constructor, configuration, transport or session change.
-**Status:** Approved with revisions (2026-11-17); R-1…R-4 folded, owner answers recorded. Not implemented.
+**Status:** Implemented (2026-11-17), version 0.6.1, not yet released. AC-01…AC-11 met; evidence in [evidence/VR-015-google-stt-speech-activity-pulse.md](evidence/VR-015-google-stt-speech-activity-pulse.md).
 **Requested:** 2026-11-17
 **Judgement:** [VR-015-google-stt-speech-activity-pulse.judgement.md](VR-015-google-stt-speech-activity-pulse.judgement.md)
 **Owner and approver:** sami.j.p.heikkinen
@@ -98,17 +98,17 @@ Offline tests live in a new module `tests/test_vr015_google_stt_pulse.py`, marke
 
 Synthetic timings below are relative to the BEGIN at `t=0`, in virtual seconds.
 
-- [ ] AC-01 (runnable RED): with the Google extra installed, the new module collects and runs. On the unchanged 0.6.0 provider the tests fail on assertions about missing periodic callbacks, not on imports, fixtures or skips. RED recorded before GREEN.
-- [ ] AC-02 (pulse): BEGIN emits one immediate empty notification, then one every 0.25 s. After draining all callbacks due through `t=2.0`, exactly nine notifications have occurred (1 + 8).
-- [ ] AC-03 (termination by END or final): END stops periodic notifications, and the count stays stable for the next 2 s. A final without END also stops them; covered for a committed, an empty, a speaking-suppressed and an echo-discarded final. Existing commit and discard behaviour is unchanged.
-- [ ] AC-04 (synthetic B-1 analogue, not an exact replay): commit "Kyllä." → BEGIN `t=0` → END `t=1.6` → final "juuri reseptin uusimisesta on kyse." `t=2.1`. Periodic pulses fire at `0.25, 0.50, …, 1.50`; none after END; the second final is committed exactly once at `t=2.1`. The END → final gap is intentionally not asserted.
-- [ ] AC-05 (cap): with no END or final, the pulse terminates at `t=30.0`, emits nothing at or after that point and logs exactly one `WARNING` `Google STT speech pulse cap reached after 30s`. Advancing a further 2 s produces neither callbacks nor another warning.
-- [ ] AC-06 (restart): BEGINs at `t=0` and `t=0.1` produce immediate callbacks at both, periodic callbacks at `0.35, 0.60, 0.85`, and none at `0.25, 0.50, 0.75`. Advancing past cancellation shows the old schedule cannot emit and at most one periodic producer is live.
-- [ ] AC-07 (speaking, echo, interim): while `set_speaking(True)`, no pulse reaches the consumer and no extra producer is created. After `set_speaking(False)`, the next scheduled pulse fires, including inside the echo-discard window. Real interim text is forwarded unchanged; the periodic sequence continues, neither cancelled nor duplicated.
-- [ ] AC-08 (lifecycle): explicit `stop()`, normal input EOF, terminal stream failure, retry and forced rotation each end the old pulse. No old callback occurs during teardown, backoff or the replacement stream before its own BEGIN; a BEGIN on the new stream starts exactly one new sequence. After `stop()`, no owned task is unfinished (VR-005 pattern).
-- [ ] AC-09 (unchanged suite and checks): the full existing suite passes unchanged, including the VR-013 Google tests (run with the extra installed) and the Azure, ElevenLabs and mock tests. `ruff check voice_runtime/`, a clean wheel build and the PR checks of `reference/release-checklist.md` pass. Commands and outcomes are recorded in the evidence file.
-- [ ] AC-10 (single live desk check, owner-authorized 2026-11-17): one invocation, no automatic retries, synthetic text only, no configuration or deployment change: `GOOGLE_SPEECH_PROJECT=scp-tenant-csap-test` (location `eu`, model `chirp_3`, `fi-FI`, endpointing `supershort`), `python -m voice_runtime.speech_check --provider azure --stt-provider google --text "<Run 3/4 paragraph of CSAP evidence 2026-11-16-chirp3-speech-check.md>" --timeout 45`. Pass: exit 0, `recognizing >= 20` (baseline 7) and WER `<= 0.156` (baseline: the Azure TTS → Google STT row, evidence line 105). The effective non-secret settings, package version, exact command, full output and transcript go in `feature-requests/evidence/VR-015-google-stt-speech-activity-pulse.md`. A failure is recorded as failed and blocks completion; it is not retried until it passes. Passing does not certify CSAP calls or clinical accuracy.
-- [ ] AC-11 (docs and release): README and CHANGELOG describe the bounded timing change and its limits. The version is the next patch from the actual release baseline. The FR records implementation status, decisions and evidence. These are one-time evidence, not unit tests.
+- [x] AC-01 (runnable RED): with the Google extra installed, the new module collects and runs. On the unchanged 0.6.0 provider the tests fail on assertions about missing periodic callbacks, not on imports, fixtures or skips. RED recorded before GREEN.
+- [x] AC-02 (pulse): BEGIN emits one immediate empty notification, then one every 0.25 s. After draining all callbacks due through `t=2.0`, exactly nine notifications have occurred (1 + 8).
+- [x] AC-03 (termination by END or final): END stops periodic notifications, and the count stays stable for the next 2 s. A final without END also stops them; covered for a committed, an empty, a speaking-suppressed and an echo-discarded final. Existing commit and discard behaviour is unchanged.
+- [x] AC-04 (synthetic B-1 analogue, not an exact replay): commit "Kyllä." → BEGIN `t=0` → END `t=1.6` → final "juuri reseptin uusimisesta on kyse." `t=2.1`. Periodic pulses fire at `0.25, 0.50, …, 1.50`; none after END; the second final is committed exactly once at `t=2.1`. The END → final gap is intentionally not asserted.
+- [x] AC-05 (cap): with no END or final, the pulse terminates at `t=30.0`, emits nothing at or after that point and logs exactly one `WARNING` `Google STT speech pulse cap reached after 30s`. Advancing a further 2 s produces neither callbacks nor another warning.
+- [x] AC-06 (restart): BEGINs at `t=0` and `t=0.1` produce immediate callbacks at both, periodic callbacks at `0.35, 0.60, 0.85`, and none at `0.25, 0.50, 0.75`. Advancing past cancellation shows the old schedule cannot emit and at most one periodic producer is live.
+- [x] AC-07 (speaking, echo, interim): while `set_speaking(True)`, no pulse reaches the consumer and no extra producer is created. After `set_speaking(False)`, the next scheduled pulse fires, including inside the echo-discard window. Real interim text is forwarded unchanged; the periodic sequence continues, neither cancelled nor duplicated.
+- [x] AC-08 (lifecycle): explicit `stop()`, normal input EOF, terminal stream failure, retry and forced rotation each end the old pulse. No old callback occurs during teardown, backoff or the replacement stream before its own BEGIN; a BEGIN on the new stream starts exactly one new sequence. After `stop()`, no owned task is unfinished (VR-005 pattern).
+- [x] AC-09 (unchanged suite and checks): the full existing suite passes unchanged, including the VR-013 Google tests (run with the extra installed) and the Azure, ElevenLabs and mock tests. `ruff check voice_runtime/`, a clean wheel build and the PR checks of `reference/release-checklist.md` pass. Commands and outcomes are recorded in the evidence file.
+- [x] AC-10 (single live desk check, owner-authorized 2026-11-17): one invocation, no automatic retries, synthetic text only, no configuration or deployment change: `GOOGLE_SPEECH_PROJECT=scp-tenant-csap-test` (location `eu`, model `chirp_3`, `fi-FI`, endpointing `supershort`), `python -m voice_runtime.speech_check --provider azure --stt-provider google --text "<Run 3/4 paragraph of CSAP evidence 2026-11-16-chirp3-speech-check.md>" --timeout 45`. Pass: exit 0, `recognizing >= 20` (baseline 7) and WER `<= 0.156` (baseline: the Azure TTS → Google STT row, evidence line 105). The effective non-secret settings, package version, exact command, full output and transcript go in `feature-requests/evidence/VR-015-google-stt-speech-activity-pulse.md`. A failure is recorded as failed and blocks completion; it is not retried until it passes. Passing does not certify CSAP calls or clinical accuracy.
+- [x] AC-11 (docs and release): README and CHANGELOG describe the bounded timing change and its limits. The version is the next patch from the actual release baseline. The FR records implementation status, decisions and evidence. These are one-time evidence, not unit tests.
 
 ## Owner answers (gate C-2, 2026-11-17)
 
@@ -116,6 +116,28 @@ Synthetic timings below are relative to the BEGIN at `t=0`, in virtual seconds.
 |---|---|
 | Accept that speech beyond the 30 s cap, END → final latency and stream replacement remain outside the pulse guarantee? | **Yes.** Measure the residual cut-off rate in CSAP TEST; an extension past END is a separate FR. |
 | Authorize one Azure TTS / Google STT desk-check invocation and its spend? | **Yes**, one bounded invocation per AC-10. |
+
+## Implementation status (2026-11-17)
+
+| Deliverable | Result |
+|---|---|
+| D-1 `voice_runtime/providers/google_stt.py` | `SPEECH_PULSE_INTERVAL_S = 0.25`, `SPEECH_PULSE_MAX_S = 30.0`; `_signal_speech()` shared by the BEGIN callback and the pulse; a `SpeechPulse` instance started at BEGIN and stopped at END, any final, the stream trigger, the stream `finally` and `stop()`. 437 lines |
+| D-1a `voice_runtime/providers/_google_pulse.py` (new) | `SpeechPulse`: one producer task scheduled through the provider's `_schedule_owned`; fixed tick schedule; cap warning on the `voice_runtime.providers.google_stt` logger |
+| D-1b `voice_runtime/providers/_google_errors.py` (new) | Error classification moved unchanged from `google_stt.py`: `Outcome`, `UNEXPECTED_EOF`, `RETRYABLE`, `TERMINAL`, `classify()`; the "unclassified" log keeps the `voice_runtime.providers.google_stt` logger name |
+| D-2 `tests/test_vr015_google_stt_pulse.py` | 18 tests, harness imported from `tests/test_vr013_google_stt.py`; RED 17 failed / 1 passed, GREEN 18 passed |
+| D-3 `README.md`, `CHANGELOG.md` | README "Callback timing" paragraph replaces "Interface conformance only"; CHANGELOG 0.6.1 *Fixed* entry with limits |
+| D-4 `pyproject.toml` | 0.6.0 → 0.6.1 (0.6.0 is tagged and on PyPI) |
+| D-5 FR and evidence | This section; evidence file with RED, GREEN, suite, build and AC-10 output |
+
+Results: full suite 907 passed, 1 skipped (ElevenLabs key-gated); `ruff check voice_runtime/` clean; wheel builds. AC-10: `recognizing=63` (baseline 7), WER 0.156, exit 0.
+
+Decisions:
+
+- **Fixed tick schedule.** Pulse *n* is due at `start + n × 0.25 s`, computed from the pulse start, so a late wake-up does not shift later pulses. The cap check uses the same schedule: the last pulse is at 29.75 s and the warning at 30.0 s.
+- **Stop at the stream trigger as well as in `finally`.** `_run_stream` stops the pulse as soon as `_wait_trigger` returns (rotation, end of input, reader end), before the up to 5 s drain, not only in its `finally`. This satisfies AC-08 "no old callback during teardown". A BEGIN read from the old stream during the drain could restart a pulse; the `finally` stops it.
+- **BEGIN while speaking still starts the producer.** The callback is suppressed while speaking, as for the existing immediate BEGIN callback, so the pulse is in place when speaking ends (AC-07).
+- **Module split for the file-size gate (owner decision 2026-11-17).** `google_stt.py` was already exactly at the 450-line pre-commit limit before VR-015; the inline pulse took it to 493. Following the VR-013 precedent (`f17b5f0`, `_google_config.py`), the pulse moved to `_google_pulse.py` and the existing error classification moved unchanged to `_google_errors.py`, giving 437 lines. Behaviour, public names and the constants' home (`google_stt`) are unchanged; no re-judge. Tests and pre-commit re-ran green after the split; AC-10 was not repeated.
+- **Test-file lint.** voice_runtime pre-commit lints only `voice_runtime/` and format-checks `tests/`. The `noqa` comments on the harness import name the reason (fixtures registered by import, imports after the optional-extra skip).
 
 ## Out of scope
 

@@ -161,12 +161,16 @@ environment, and the environment wins over the default.
 An explicit `project=""` raises `ValueError`. TTS supports **Chirp 3 HD
 voices only** (streaming synthesis); the language is taken from the voice name.
 
-**Interface conformance only.** The providers implement `SttProvider` and
-`TtsProvider`, but the callback timing differs from Azure: Chirp 3 sends no
-interim results, so `on_recognizing` fires once per speech segment (with `""`
-at speech start), not repeatedly while the caller talks. Consumers whose
-silence or liveness timers rely on frequent `recognizing` events must check
-this before switching.
+**Callback timing.** The providers implement `SttProvider` and `TtsProvider`.
+Chirp 3 sends no interim results. Since 0.6.1 (VR-015), `on_recognizing("")`
+fires at speech start and then every 0.25 s while Google reports active
+speech, so silence or liveness timers driven by `recognizing` events see a
+steady cadence, as with Azure. The pulse stops at speech end, a final result,
+stream end, `stop()` or a 30 s cap, and is suppressed while speaking. It is not
+full Azure equivalence: there is no event between Google's speech end and the
+final transcript (0.4-0.9 s observed), after the cap, or on a replacement
+stream before its next speech start. Consumers with sub-second silence
+thresholds should measure their residual cut-off rate.
 
 **Commit log line.** `Google STT committed lang=<code> commit_lag_ms=<int>
 chars=<int>`. `commit_lag_ms` is the time from the end of speech detected by
