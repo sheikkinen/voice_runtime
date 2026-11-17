@@ -8,6 +8,7 @@ VR-013 §1: persistent streaming recognition over SpeechAsyncClient.
   - Rotation at the first final after 270 s, forced at 290 s (5 min limit).
   - Retry policy R-2: backoff 1, 2, 4 s; terminal errors end the session.
   - The commit log line carries language, lag and length, never the text.
+  - VR-015: on_recognizing("") pulses while Google reports active speech.
 """
 
 from __future__ import annotations
@@ -19,12 +20,13 @@ from collections.abc import AsyncIterator, Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from google.api_core import exceptions as gexc
 from google.api_core.client_options import ClientOptions
 from google.cloud.speech_v2 import SpeechAsyncClient
 from google.cloud.speech_v2.types import cloud_speech
 
 from voice_runtime.providers._google_config import SAMPLE_RATE_HZ, SttSettings, snake
+from voice_runtime.providers._google_errors import UNEXPECTED_EOF, Outcome, classify
+from voice_runtime.providers._google_pulse import SpeechPulse
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,8 @@ _monotonic = time.monotonic
 _sleep = asyncio.sleep
 
 ECHO_DISCARD_WINDOW_S = 0.4
+SPEECH_PULSE_INTERVAL_S = 0.25
+SPEECH_PULSE_MAX_S = 30.0
 REQUEST_BYTES = 800  # 100 ms of 8 kHz mu-law
 _DRAIN_TIMEOUT_S = 5.0
 _ROTATE_AFTER_S = 270.0
@@ -41,23 +45,8 @@ _SUCCESS_AFTER_S = 5.0
 _RECONNECT_BASE_DELAY_S = 1.0
 _RECONNECT_MAX_DELAY_S = 30.0
 _MAX_REPLACEMENTS = 3
-_UNEXPECTED_EOF = "UnexpectedEOF"
 
 _SpeechEvent = cloud_speech.StreamingRecognizeResponse.SpeechEventType
-
-_RETRYABLE: tuple[type[Exception], ...] = (
-    gexc.ServiceUnavailable,
-    gexc.DeadlineExceeded,
-    gexc.InternalServerError,
-    gexc.Aborted,
-)
-_TERMINAL: tuple[type[Exception], ...] = (
-    gexc.PermissionDenied,
-    gexc.Unauthenticated,
-    gexc.InvalidArgument,
-    gexc.NotFound,
-    gexc.ResourceExhausted,
-)
 
 
 async def _wait_any(events: Sequence[asyncio.Event], timeout: float | None) -> bool:
@@ -91,13 +80,6 @@ class _Stream:
         return self.got_response or _monotonic() - self.opened_at >= _SUCCESS_AFTER_S
 
 
-@dataclass
-class _Outcome:
-    kind: str  # "end" | "rotate" | "retry" | "terminal"
-    name: str = ""
-    succeeded: bool = False
-
-
 class GooglePersistentStt:
     """Google Speech-to-Text v2 (Chirp 3) provider for persistent mode."""
 
@@ -126,6 +108,12 @@ class GooglePersistentStt:
         self._last_send_at: float | None = None
         self._last_send_s = 0.0
         self._end_at: float | None = None  # last SPEECH_ACTIVITY_END
+        self._pulse = SpeechPulse(
+            self._signal_speech,
+            self._schedule_owned,
+            SPEECH_PULSE_INTERVAL_S,
+            SPEECH_PULSE_MAX_S,
+        )
         self._terminal_fired = False
         self.on_committed: Callable[[str], None] | None = None
         self.on_recognizing: Callable[[str], None] | None = None
@@ -285,7 +273,7 @@ class GooglePersistentStt:
             if self._feed_task is not None and not self._feed_task.done():
                 self._feed_task.cancel()
 
-    async def _run_stream(self) -> _Outcome:
+    async def _run_stream(self) -> Outcome:
         """Run one stream from open to rotation, end of input or failure."""
         stream = _Stream()
         self._end_at = None
@@ -294,18 +282,19 @@ class GooglePersistentStt:
             call = await self._client.streaming_recognize(requests=requests)
         except Exception as exc:
             stream.end_requests.set()  # a lingering consumer takes no carry bytes
-            return self._classify(exc, succeeded=False)
+            return classify(exc, succeeded=False)
         stream.opened_at = _monotonic()
         logger.info("Google STT stream open")
         reader = asyncio.ensure_future(self._read(call, stream))
         try:
             trigger = await self._wait_trigger(stream, reader)
+            self._pulse.stop()
             if trigger == "reader":
                 return self._reader_outcome(reader, stream)
             if trigger == "input_end":
                 if not await self._drain(reader):
                     logger.info("Google STT final drain timed out; cancelling")
-                    return _Outcome("end")
+                    return Outcome("end")
                 outcome = self._reader_outcome(reader, stream)
                 if outcome.kind == "terminal":
                     return outcome
@@ -313,7 +302,7 @@ class GooglePersistentStt:
                     logger.warning(
                         "Google STT error after end of input: %s", outcome.name
                     )
-                return _Outcome("end")
+                return Outcome("end")
             forced = trigger == "forced"
             age = _monotonic() - stream.opened_at
             stream.end_requests.set()
@@ -329,8 +318,9 @@ class GooglePersistentStt:
                 str(forced).lower(),
                 str(drained).lower(),
             )
-            return _Outcome("rotate")
+            return Outcome("rotate")
         finally:
+            self._pulse.stop()
             stream.end_requests.set()
             if not reader.done():
                 reader.cancel()
@@ -368,24 +358,15 @@ class GooglePersistentStt:
             timer.cancel()
         return reader.done()
 
-    def _reader_outcome(self, reader: asyncio.Future[Any], stream: _Stream) -> _Outcome:
+    def _reader_outcome(self, reader: asyncio.Future[Any], stream: _Stream) -> Outcome:
         exc = reader.exception()
         if exc is not None:
-            return self._classify(exc, succeeded=stream.succeeded())
+            return classify(exc, succeeded=stream.succeeded())
         if stream.input_done.is_set():
-            return _Outcome("end")
+            return Outcome("end")
         if stream.end_requests.is_set():
-            return _Outcome("rotate")
-        return _Outcome("retry", _UNEXPECTED_EOF, stream.succeeded())
-
-    @staticmethod
-    def _classify(exc: BaseException, succeeded: bool) -> _Outcome:
-        name = type(exc).__name__
-        if isinstance(exc, _RETRYABLE):
-            return _Outcome("retry", name, succeeded)
-        if not isinstance(exc, _TERMINAL):
-            logger.error("Google STT unclassified error treated as terminal: %r", exc)
-        return _Outcome("terminal", name)
+            return Outcome("rotate")
+        return Outcome("retry", UNEXPECTED_EOF, stream.succeeded())
 
     def _fire_error(self, reason: str) -> None:
         if self._terminal_fired or self._stopping:
@@ -407,16 +388,21 @@ class GooglePersistentStt:
     ) -> None:
         event = response.speech_event_type
         if event == _SpeechEvent.SPEECH_ACTIVITY_BEGIN:
-            if not self._speaking and self.on_recognizing:
-                self.on_recognizing("")
+            self._signal_speech()
+            self._pulse.start()
         elif event == _SpeechEvent.SPEECH_ACTIVITY_END:
             self._end_at = _monotonic()
+            self._pulse.stop()
         for result in response.results:
             text = result.alternatives[0].transcript if result.alternatives else ""
             if result.is_final:
                 self._on_final(text, stream)
             else:
                 self._on_interim(text)
+
+    def _signal_speech(self) -> None:
+        if not self._speaking and self.on_recognizing:
+            self.on_recognizing("")
 
     def _on_interim(self, text: str) -> None:
         cleaned = text.strip()
@@ -427,6 +413,7 @@ class GooglePersistentStt:
 
     def _on_final(self, text: str, stream: _Stream) -> None:
         """Commit a final result; every final consumes the END timestamp."""
+        self._pulse.stop()
         end_at, self._end_at = self._end_at, None
         now = _monotonic()
         if now - stream.opened_at >= _ROTATE_AFTER_S:
